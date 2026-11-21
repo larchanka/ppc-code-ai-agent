@@ -45,13 +45,36 @@ else {
 }
 close $rf;
 
+my $attempt_idx = 0;
+if (defined $ENV{MOCK_CURL_COUNT_FILE} && length $ENV{MOCK_CURL_COUNT_FILE}) {
+    my $cf = $ENV{MOCK_CURL_COUNT_FILE};
+    if (-f $cf && open(my $cfh, '<', $cf)) {
+        my $val = <$cfh>;
+        close $cfh;
+        if (defined $val && $val =~ /(\d+)/) {
+            $attempt_idx = int($1);
+        }
+    }
+    open(my $wfh, '>', $cf) or die "Cannot write $cf: $!";
+    print $wfh ($attempt_idx + 1) . "\n";
+    close $wfh;
+}
+
 if ($output_path) {
     open my $of, '>', $output_path or die "Cannot write $output_path: $!";
     my $mock_resp = $ENV{MOCK_CURL_RESPONSE} || '{"status":"ok"}';
+    if (defined $ENV{MOCK_CURL_RESP_SEQUENCE} && length $ENV{MOCK_CURL_RESP_SEQUENCE}) {
+        my @resps = split /\n/, $ENV{MOCK_CURL_RESP_SEQUENCE};
+        $mock_resp = ($attempt_idx < @resps) ? $resps[$attempt_idx] : $resps[-1];
+    }
     print $of $mock_resp;
     close $of;
 }
 
 my $code = $ENV{MOCK_CURL_HTTP_CODE} || '200';
+if (defined $ENV{MOCK_CURL_HTTP_SEQUENCE} && length $ENV{MOCK_CURL_HTTP_SEQUENCE}) {
+    my @codes = split /[,:\s]+/, $ENV{MOCK_CURL_HTTP_SEQUENCE};
+    $code = ($attempt_idx < @codes) ? $codes[$attempt_idx] : $codes[-1];
+}
 print $code;
 exit 0;

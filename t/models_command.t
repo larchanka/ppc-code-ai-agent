@@ -8,6 +8,7 @@ use Cwd qw(abs_path);
 my $root_dir = abs_path(dirname(__FILE__) . '/..');
 $ENV{CLAUDE_CURL} = "$root_dir/t/mock_curl.pl";
 $ENV{CLAUDE_CACERT} = "$root_dir/cacert.pem";
+$ENV{CLAUDE_RETRY_DELAY} = 0;
 $ENV{MOCK_CURL_LOG} = "$root_dir/t/test_mock_curl.log";
 
 system($^X, "$root_dir/build.pl") unless -f "$root_dir/code-agent.pl";

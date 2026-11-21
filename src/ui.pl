@@ -118,7 +118,7 @@ sub format_tool_call {
 sub format_thinking_status {
     my ($elapsed) = @_;
     $elapsed = 1 if !defined $elapsed || $elapsed < 1;
-    my $text = "* Thinking ${elapsed}s...";
+    my $text = "\n* Thinking ${elapsed}s...";
     if (defined $COLOR_DIM && $COLOR_DIM ne '') {
         return "$COLOR_DIM$text$COLOR_RESET";
     }
@@ -132,6 +132,15 @@ sub finalize_thinking_line {
 
 sub clear_thinking_line {
     return "\r\033[K";
+}
+
+sub format_retry_status {
+    my ($retry_num, $max_retries, $delay) = @_;
+    my $text = "* API error, retrying in ${delay}s ($retry_num/$max_retries)...";
+    if (defined $COLOR_DIM && $COLOR_DIM ne '') {
+        return "$COLOR_DIM$text$COLOR_RESET";
+    }
+    return $text;
 }
 
 sub format_subagent_start {

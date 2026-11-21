@@ -73,7 +73,7 @@ graph TD
   - Execution of `$CLAUDE_CURL` (`/usr/local/code-toolchain/bin/curl` or bundled `./curl`).
   - Strict certificate verification using bundled Mozilla `cacert.pem`.
   - Payload streaming and response capture via temporary files or pipes.
-  - HTTP error code handling and retry guidance.
+  - Automatic retry mechanism (`call_api` wrapping `_call_api_once`) that retries failed or transient HTTP/JSON/provider API calls up to 3 times (`CLAUDE_MAX_RETRIES`, default `3`) with a 5-second interval (`CLAUDE_RETRY_DELAY`, default `5`).
 
 ### 4. Autonomous Tool Execution & Safety Layer
 - **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 57–60, 1046–1095, 1164–1172, 2040–2080)

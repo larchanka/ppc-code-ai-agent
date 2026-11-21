@@ -44,6 +44,7 @@ Vintage Macs are wonderful pieces of industrial design and distraction-free comp
 - **Multi-Provider AI**: Connects to **Anthropic Claude**, **Google Gemini** (with a free tier requiring no credit card), or **Local OpenAI-compatible models** (Ollama, llama.cpp, LocalAI running on your home LAN).
 - **Agentic Tool Execution**: Autonomously inspects directories, reads files, writes code, and executes shell commands directly on your Mac.
 - **Autonomous Sub-Agents**: Delegates complex tasks to specialized sub-agents with isolated conversation contexts (`plan` for read-only exploration and `build` for implementation), preserving context tokens and displaying progress in an indented tree view.
+- **Automatic LLM Call Retries**: Resilient transport layer that automatically retries failed or transient LLM API calls up to **3 retries** with a **5-second** delay between attempts (configurable via `CLAUDE_MAX_RETRIES` and `CLAUDE_RETRY_DELAY`).
 - **Safety Modes**: Switch between **Manual Mode** (`/manual`, requiring user confirmation for disk writes and commands) and **Autonomous Mode** (`/auto`, executing tools automatically).
 - **Session Management**: Start a fresh conversation at any time with `/new` to reset context history without restarting the agent or re-authenticating.
 - **Retro Vintage Terminal UX**: Built-in VT100 line editor with history navigation, arrow keys, and a nostalgic typewriter typing effect (`slow_print`).
@@ -312,6 +313,10 @@ export GEMINI_API_KEY="AIzaSy..."
 
 # Typewriter print delay (seconds per char; set to "0" to disable typing effect)
 # export CLAUDE_TYPE_DELAY="0.005"
+
+# Automatic API retry settings (max retries on error and delay in seconds between retries)
+# export CLAUDE_MAX_RETRIES="3"
+# export CLAUDE_RETRY_DELAY="5"
 ```
 
 ### Supported Environment Variables
@@ -325,6 +330,8 @@ export GEMINI_API_KEY="AIzaSy..."
 | `OPENAI_API_KEY` | API key for OpenAI-compatible endpoint | `none` |
 | `CLAUDE_MODEL` | Specific model identifier to use with the active provider | `gemini-3.5-flash-lite` / `claude-sonnet-4-5-20250929` |
 | `CLAUDE_AUTO_MODE` | Default tool permission mode: `1` (autonomous) or `0` (manual) | `0` |
+| `CLAUDE_MAX_RETRIES` | Maximum number of automatic retry attempts when an LLM API call returns an error | `3` |
+| `CLAUDE_RETRY_DELAY` | Wait interval in seconds between LLM API call retry attempts | `5` |
 | `CLAUDE_CURL` | Custom path to a TLS 1.2+ capable `curl` binary | Auto-detected / bundled toolchain |
 | `CLAUDE_CACERT` | Custom path to Mozilla root CA certificate bundle (`cacert.pem`) | Auto-detected / `$BUILD_DIR/src/cacert.pem` |
 | `CLAUDE_TYPE_DELAY` | Simulated typing speed in seconds per character (`0` to disable) | `0.005` (PowerPC) / `0.003` (modern) |
@@ -363,16 +370,18 @@ perl -c code-agent.pl
 prove -v t/*.t
 ```
 
-Test coverage includes 14 automated test suites:
+Test coverage includes 16 automated test suites:
 - `t/agents_context.t`: Global (~/.agents/AGENTS.md) and project-local instructions loading and deduplication.
 - `t/auto_manual_commands.t`: Unit tests for `/auto`, `/manual`, state accessors, and tool bypass logic.
 - `t/banner.t`: Unit tests for two-tone ANSI banner formatting, 80-column bounds, and `$NO_COLOR` graceful degradation.
 - `t/build.t`: Unit tests for `build.pl` modular assembly, syntax checks, and sync verification.
 - `t/call_api.t`: Mocked curl transport invocation and error handling tests.
+- `t/ctx_command.t`: Unit tests for `/ctx` max output token inspection and configuration.
 - `t/env_config.t`: Environment configuration and fallback provider tests.
 - `t/fetch_models.t`: Model discovery normalization tests across providers.
 - `t/models_command.t`: Interactive `/models` slash command handling.
 - `t/new_command.t`: Session reset, conversation archiving, and context clearing tests.
+- `t/retry.t`: Unit tests for automatic LLM API call retry logic (max 3 retries, 5s delay, transient HTTP/JSON/provider error recovery, and sub-agent resilience).
 - `t/select_model_interactive.t`: Terminal menu navigation, key reading, and scrolling tests.
 - `t/subagents.t`: Unit tests for sub-agent invocation (`plan`/`build`), turn countdown injection, loop limits, and ANSI tree formatting.
 - `t/thinking_visuals.t`: Extended reasoning / thinking progress visual timers.

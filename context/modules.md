@@ -37,6 +37,9 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `get_current_model()`: Returns active `$MODEL`.
 - `get_current_provider()`: Returns active `$PROVIDER`.
 - `get_current_api_url()`: Returns active `$API_URL`.
+- `init_retry_config()`: Initializes `$MAX_RETRIES` (default `3`) and `$RETRY_DELAY` (default `5`) from `CLAUDE_MAX_RETRIES` and `CLAUDE_RETRY_DELAY`.
+- `get_max_retries()`: Returns effective maximum retry count (`>= 0`).
+- `get_retry_delay()`: Returns effective retry delay in seconds (`>= 0`).
 
 #### Model Discovery & Selection
 - `fetch_models($provider)`: Dispatches to provider-specific fetchers and returns normalized `($models_ref, $error)`.
@@ -97,12 +100,14 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `format_subagent_tool_call($subagent_type, $turn, $max_turns, $name, $input)`: Formats indented sub-agent tool call with turn countdown indicators (`[Turn X/50]`).
 - `format_subagent_finish($subagent_type, $turns, $status)`: Formats indented sub-agent completion footer.
 - `format_thinking_status($elapsed)`: Formats active reasoning/thinking progress indicator with elapsed timer.
+- `format_retry_status($retry_num, $max_retries, $delay)`: Formats transient API error retry countdown indicator (`* API error, retrying in Xs (N/M)...`).
 - `finalize_thinking_line($elapsed)`: Replaces active progress with final thinking duration.
 - `clear_thinking_line()`: Clears transient thinking line via carriage return and ANSI line clear (`\r\033[K`).
 - `slow_print($text)`: Prints output with simulated typewriter delay for vintage terminal ambiance.
 
 #### Network & Tool Execution
-- `call_api($url, $headers_ref, $body_json, $method)`: Executes bundled `curl` with SSL certificate bundle for POST or GET requests and returns HTTP response body.
+- `_call_api_once($url, $headers_ref, $body_json, $method)`: Executes a single HTTP request via bundled `curl` with SSL certificate bundle, decodes JSON, and checks for HTTP non-2xx status or provider error objects.
+- `call_api($url, $headers_ref, $body_json, $method)`: Wraps `_call_api_once` with automatic retry logic up to `get_max_retries()` times (default 3 retries) waiting `get_retry_delay()` seconds (default 5s) between attempts.
 - `confirm($prompt)`: Displays an interactive `[y/N]` prompt requiring affirmative user consent.
 - `confirm_tool($prompt)`: Tool permission gate returning `1` if `$AUTO_MODE` is enabled, or delegating to `confirm($prompt)` in manual mode (prefixed with `[Sub-agent: $type]` when invoked under a sub-agent).
 - `run_tool($name, $input)`: Executes requested agent tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`, `invoke_subagent`), gating side effects through `confirm_tool()`.

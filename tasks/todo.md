@@ -1,48 +1,47 @@
-# Task List: `/ctx` Context Window / Token Limit Command
+# Task List: LLM API Call Retry Mechanism
 
-## Phase 1: Foundation & State Management
-- [x] Task 1: Context Limit State & Helper Subroutines
-  - [x] Declare `our $MAX_TOKENS` with default 8,192 (8k) in `src/header.pl`
-  - [x] Support `CLAUDE_MAX_TOKENS` and `CLAUDE_CONTEXT` environment variables in `src/header.pl`
-  - [x] Implement `parse_context_size($input)` in `src/header.pl` supporting numbers (`65536`) and shorthand units (`8k`, `64k`, `1m`)
-  - [x] Implement `format_context_size($tokens)` in `src/header.pl`
-  - [x] Implement `get_max_tokens()` and `set_max_tokens($tokens)` accessors in `src/session.pl`
-  - [x] Implement `handle_ctx_command($args, $out_fh)` in `src/session.pl`
-  - [x] Add `/ctx` description to `show_help()` in `src/session.pl`
-  - [x] Verify syntax: `perl -c src/header.pl` and `perl -c src/session.pl`
+## Phase 1: Configuration, UI Helper, and Transport Retry Logic
+- [x] Task 1: Retry Configuration & UI Status Formatter
+  - [x] Declare `our $MAX_RETRIES = 3;` and `our $RETRY_DELAY = 5;` in `src/header.pl`
+  - [x] Implement `init_retry_config()`, `get_max_retries()`, and `get_retry_delay()` in `src/header.pl` respecting `CLAUDE_MAX_RETRIES` and `CLAUDE_RETRY_DELAY`
+  - [x] Call `init_retry_config()` at startup and inside `load_env_file()` in `src/header.pl`
+  - [x] Implement `format_retry_status($retry_num, $max_retries, $delay)` in `src/ui.pl`
+  - [x] Verify syntax: `perl -c src/header.pl` and `perl -c src/ui.pl`
 
-- [x] Task 2: Provider API Request Integration & REPL Dispatch
-  - [x] Ensure `build_request` and provider builders in `src/providers.pl` respect `$MAX_TOKENS`
-  - [x] Add `/ctx` slash command dispatch in `src/main.pl`
-  - [x] Reassemble standalone artifact: `perl build.pl`
-  - [x] Verify build synchronization: `perl build.pl --check`
-  - [x] Verify syntax of compiled artifact: `perl -c code-agent.pl`
+- [x] Task 2: Implement Retry Loop in `call_api` (`src/transport.pl`)
+  - [x] Extract single-attempt curl request and response decoding into `_call_api_once($url, $headers, $body_json, $method)` in `src/transport.pl`
+  - [x] Detect HTTP non-2xx errors, empty/invalid responses, and top-level JSON error payloads (`$resp->{error}` or `$resp->{type} eq 'error'`)
+  - [x] Implement retry loop in `call_api` with max retries (`get_max_retries()`, default 3) and delay (`get_retry_delay()`, default 5s) using `select(undef, undef, undef, $delay)`
+  - [x] Display terminal retry status on TTY when waiting between retries
+  - [x] Reassemble `code-agent.pl` via `perl build.pl`
+  - [x] Verify build synchronization: `perl build.pl --check` and `perl -c code-agent.pl`
 
-## Checkpoint: Foundation & Core Implementation
-- [x] Build artifact synchronized: `perl build.pl --check` exits with 0
-- [x] Standalone script compiles cleanly: `perl -c code-agent.pl`
-- [x] Existing test suite passes with zero regressions: `prove t/*.t`
+## Checkpoint: Core Retry Implementation
+- [x] `perl build.pl --check` exits with 0
+- [x] `perl -c code-agent.pl` exits with 0
 
 ## Phase 2: Testing & Verification
-- [x] Task 3: Comprehensive Automated Unit Test Suite (`t/ctx_command.t`)
-  - [x] Write unit tests for default limit (8,192 / 8k) and environment variable overrides
-  - [x] Write unit tests for `parse_context_size` (integers, shorthand units, invalid inputs)
-  - [x] Write unit tests for `format_context_size`
-  - [x] Write unit tests for `get_max_tokens` and `set_max_tokens`
-  - [x] Write unit tests for `handle_ctx_command` (query mode, integer set, shorthand set, error handling)
-  - [x] Write unit tests for API payload construction across Anthropic, Gemini, and OpenAI
-  - [x] Write unit tests for `/ctx` presence in `show_help`
-  - [x] Run `prove -v t/ctx_command.t`
-  - [x] Run full test suite: `prove t/*.t`
+- [x] Task 3: Update Mock Harness & Existing Tests, Add Comprehensive Retry Unit Tests
+  - [x] Extend `t/mock_curl.pl` to support attempt counting (`MOCK_CURL_COUNT_FILE`) and per-attempt response/status sequences (`MOCK_CURL_HTTP_SEQUENCE`, `MOCK_CURL_RESP_SEQUENCE`)
+  - [x] Set `$ENV{CLAUDE_RETRY_DELAY} = 0` in existing test suites (`t/call_api.t`, `t/fetch_models.t`, `t/models_command.t`) so negative tests execute instantaneously while still exercising retry logic
+  - [x] Create `t/retry.t` testing:
+    - [x] Default configuration (`get_max_retries() == 3`, `get_retry_delay() == 5`)
+    - [x] Environment variable overrides (`CLAUDE_MAX_RETRIES`, `CLAUDE_RETRY_DELAY`)
+    - [x] Success on first attempt (1 call total, 0 retries)
+    - [x] Transient HTTP 500/503 errors recovering on retry 1, 2, or 3
+    - [x] Persistent error exhausting all 3 retries (4 attempts total) and dying with error message
+    - [x] Provider error JSON payload triggering retry and recovering
+    - [x] Retry delay timing and `format_retry_status` formatting
+    - [x] Sub-agent (`run_subagent`) recovering from transient LLM error via `call_api` retry
+  - [x] Run `prove -v t/retry.t` and full test suite `prove t/*.t`
 
-## Checkpoint: Test Suite Passed
-- [x] `prove -v t/ctx_command.t` passes cleanly
-- [x] All tests pass: `prove t/*.t`
+## Checkpoint: All Tests Passing
+- [x] `prove -v t/retry.t` passes 100%
+- [x] `prove t/*.t` passes 100% with zero regressions
 
 ## Phase 3: Documentation & Context Maintenance
-- [x] Task 4: Documentation & Post-Change Context & Symbol Graph Maintenance
-  - [x] Update `README.md` with `/ctx` command details, default value (8k), and examples
-  - [x] Update `README.txt` with `/ctx` command in command summary
+- [x] Task 4: Documentation & Symbol Graph Synchronization
+  - [x] Document retry behavior (max 3 retries, 5s between retries) and `CLAUDE_MAX_RETRIES` / `CLAUDE_RETRY_DELAY` in `README.md` and `README.txt`
   - [x] Run AST scanner (`ast_scanner.py`)
   - [x] Update dependency graph (`dependency_graph.py`)
   - [x] Update symbol graph & signatures (`symbol_graph.py`)

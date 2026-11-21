@@ -69,6 +69,8 @@ Settings and API keys are stored in "$HOME/.code-agent-env" (permissions 0600):
 - OPENAI_API_KEY    : Local endpoint key ("none")
 - CLAUDE_MODEL      : Override model name
 - CLAUDE_AUTO_MODE  : "1" for autonomous mode, "0" for manual confirmations
+- CLAUDE_MAX_RETRIES: Max retry attempts on LLM API errors (default: 3)
+- CLAUDE_RETRY_DELAY: Delay in seconds between API retries (default: 5)
 
 To view or edit: nano ~/.code-agent-env
 To change keys: rm ~/.code-agent-env and run Install.command again.

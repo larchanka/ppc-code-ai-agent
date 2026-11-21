@@ -82,6 +82,33 @@ sub init_max_tokens {
 
 init_max_tokens();
 
+our $MAX_RETRIES = 3;
+our $RETRY_DELAY = 5;
+
+sub get_max_retries {
+    if (defined $ENV{CLAUDE_MAX_RETRIES} && $ENV{CLAUDE_MAX_RETRIES} =~ /^\s*(-?\d+)\s*$/) {
+        my $val = int($1);
+        return $val < 0 ? 0 : $val;
+    }
+    return $MAX_RETRIES;
+}
+
+sub get_retry_delay {
+    if (defined $ENV{CLAUDE_RETRY_DELAY} && $ENV{CLAUDE_RETRY_DELAY} =~ /^\s*(-?\d+(?:\.\d+)?)\s*$/) {
+        my $val = $1 + 0;
+        return $val < 0 ? 0 : $val;
+    }
+    return $RETRY_DELAY;
+}
+
+sub init_retry_config {
+    $MAX_RETRIES = get_max_retries();
+    $RETRY_DELAY = get_retry_delay();
+    return ($MAX_RETRIES, $RETRY_DELAY);
+}
+
+init_retry_config();
+
 # Resolves the environment file path.
 # Prefers ~/.code-agent-env, falling back to legacy ~/.claude-agent-env if it exists.
 sub get_env_file_path {
@@ -111,6 +138,7 @@ sub load_env_file {
         close $fh;
     }
     init_max_tokens();
+    init_retry_config();
 }
 
 # Theme-safe ANSI attributes (zero hardcoded colors; adapts to Terminal profile)
