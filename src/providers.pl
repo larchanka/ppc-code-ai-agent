@@ -19,15 +19,17 @@ sub build_headers {
 }
 
 sub build_request {
-    my ($messages, $tools, $system) = @_;
+    my ($messages, $tools, $system, $max_tokens) = @_;
     $system = get_effective_system_prompt() unless defined $system;
-    return build_request_gemini($messages, $tools, $system)   if $PROVIDER eq 'gemini';
-    return build_request_openai($messages, $tools, $system)   if $PROVIDER eq 'openai';
-    return build_request_anthropic($messages, $tools, $system);
+    $max_tokens = $MAX_TOKENS unless defined $max_tokens;
+    return build_request_gemini($messages, $tools, $system, $max_tokens)   if $PROVIDER eq 'gemini';
+    return build_request_openai($messages, $tools, $system, $max_tokens)   if $PROVIDER eq 'openai';
+    return build_request_anthropic($messages, $tools, $system, $max_tokens);
 }
 
 sub build_request_anthropic {
-    my ($messages, $tools, $system) = @_;
+    my ($messages, $tools, $system, $max_tokens) = @_;
+    $max_tokens = $MAX_TOKENS unless defined $max_tokens;
 
     my @sanitized;
     for my $msg (@$messages) {
@@ -49,7 +51,7 @@ sub build_request_anthropic {
 
     return {
         model      => $MODEL,
-        max_tokens => $MAX_TOKENS,
+        max_tokens => $max_tokens,
         system     => $system,
         messages   => \@sanitized,
         tools      => $tools,
@@ -57,7 +59,8 @@ sub build_request_anthropic {
 }
 
 sub build_request_gemini {
-    my ($messages, $tools, $system) = @_;
+    my ($messages, $tools, $system, $max_tokens) = @_;
+    $max_tokens = $MAX_TOKENS unless defined $max_tokens;
 
     my @contents;
     for my $msg (@$messages) {
@@ -104,7 +107,7 @@ sub build_request_gemini {
         systemInstruction => { parts => [ { text => $system } ] },
         tools             => [ { functionDeclarations => \@function_declarations } ],
         generationConfig  => {
-            maxOutputTokens => $MAX_TOKENS,
+            maxOutputTokens => $max_tokens,
             thinkingConfig  => _gemini_thinking_config(),
         },
     };
@@ -129,7 +132,8 @@ sub _gemini_thinking_config {
 # assistant tool_use becomes tool_calls[].function with arguments as a JSON string
 # (OpenAI spec). tool_result becomes an independent role=tool message (linked by tool_call_id).
 sub build_request_openai {
-    my ($messages, $tools, $system) = @_;
+    my ($messages, $tools, $system, $max_tokens) = @_;
+    $max_tokens = $MAX_TOKENS unless defined $max_tokens;
 
     my @out = ({ role => 'system', content => $system });
     for my $msg (@$messages) {
@@ -188,7 +192,7 @@ sub build_request_openai {
     my $req = {
         model      => $MODEL,
         messages   => \@out,
-        max_tokens => $MAX_TOKENS,
+        max_tokens => $max_tokens,
     };
     $req->{tools} = \@tool_defs if @tool_defs;
     return $req;
