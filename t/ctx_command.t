@@ -91,7 +91,7 @@ set_max_tokens(8192);
     close $fh;
 
     is($ret, 8192, 'handle_ctx_command("") returns current limit');
-    like($output, qr/Current context limit: 8192 tokens \(8k\)/, 'handle_ctx_command prints current limit');
+    like($output, qr/Current max output tokens: 8192 \(8k\)/, 'handle_ctx_command prints current limit');
     like($output, qr/Usage: \/ctx/, 'handle_ctx_command prints usage');
 }
 
@@ -104,7 +104,7 @@ set_max_tokens(8192);
 
     is($ret, 65536, 'handle_ctx_command("65536") returns new limit');
     is(get_max_tokens(), 65536, 'get_max_tokens() updated');
-    like($output, qr/Context limit set to 65536 tokens \(64k\)/, 'handle_ctx_command prints confirmation');
+    like($output, qr/Max output tokens set to 65536 \(64k\)/, 'handle_ctx_command prints confirmation');
 }
 
 # 4.3 Set mode with shorthand unit
@@ -116,7 +116,7 @@ set_max_tokens(8192);
 
     is($ret, 8192, 'handle_ctx_command("8k") returns 8192');
     is(get_max_tokens(), 8192, 'get_max_tokens() updated to 8192');
-    like($output, qr/Context limit set to 8192 tokens \(8k\)/, 'handle_ctx_command prints confirmation for 8k');
+    like($output, qr/Max output tokens set to 8192 \(8k\)/, 'handle_ctx_command prints confirmation for 8k');
 }
 
 # 4.4 Error handling mode
@@ -128,7 +128,7 @@ set_max_tokens(8192);
 
     is($ret, undef, 'handle_ctx_command("not_a_number") returns undef');
     is(get_max_tokens(), 8192, 'get_max_tokens() preserved after error');
-    like($output, qr/Invalid context size 'not_a_number'/, 'handle_ctx_command prints error message');
+    like($output, qr/Invalid token count 'not_a_number'/, 'handle_ctx_command prints error message');
 }
 
 # ==================================================================
