@@ -22,6 +22,7 @@ USING THE AGENT
 Once started, you can chat with the agent or enter slash commands:
 - /new     : Start a new conversation (clears history and resets context)
 - /models  : View and switch available AI models
+- /ctx     : View or set context token limit (default: 8k; e.g. /ctx 64k, /ctx 65536)
 - /claude  : Switch to Anthropic Claude
 - /gemini  : Switch to Google Gemini
 - /openai  : Switch to OpenAI-compatible endpoint (e.g. local LAN Ollama)

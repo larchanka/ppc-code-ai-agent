@@ -287,9 +287,13 @@ close $tf;
 # 7. Prompt guidelines for build sub-agent
 # ==================================================================
 {
-    our $SUBAGENT_BUILD_PROMPT;
+    our ($SUBAGENT_BUILD_PROMPT, $SUBAGENT_PLAN_PROMPT);
     ok(defined $SUBAGENT_BUILD_PROMPT, "SUBAGENT_BUILD_PROMPT is defined");
     like($SUBAGENT_BUILD_PROMPT, qr/chain.*run_shell/i, "SUBAGENT_BUILD_PROMPT instructs command chaining");
+    like($SUBAGENT_BUILD_PROMPT, qr/<turn_economy>.*<\/turn_economy>/s, "SUBAGENT_BUILD_PROMPT includes <turn_economy> section");
+    like($SUBAGENT_BUILD_PROMPT, qr/<file_editing>.*<\/file_editing>/s, "SUBAGENT_BUILD_PROMPT includes shared <file_editing> section");
+    like($SUBAGENT_BUILD_PROMPT, qr/<tiger_env>.*<\/tiger_env>/s, "SUBAGENT_BUILD_PROMPT includes shared <tiger_env> section");
+    like($SUBAGENT_PLAN_PROMPT, qr/<turn_economy>.*<\/turn_economy>/s, "SUBAGENT_PLAN_PROMPT includes <turn_economy> section");
 }
 
 done_testing();

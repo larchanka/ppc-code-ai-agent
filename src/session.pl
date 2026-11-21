@@ -21,6 +21,20 @@ sub set_auto_mode {
     return $AUTO_MODE;
 }
 
+sub get_max_tokens {
+    return $MAX_TOKENS;
+}
+
+sub set_max_tokens {
+    my ($val) = @_;
+    return undef unless defined $val;
+    my $tokens = parse_context_size($val);
+    return undef unless defined $tokens;
+    $MAX_TOKENS = $tokens;
+    $ENV{CLAUDE_MAX_TOKENS} = $tokens;
+    return $MAX_TOKENS;
+}
+
 sub generate_session_id {
     my ($sec, $min, $hour, $mday, $mon, $year) = localtime();
     $SESSION_COUNTER++;
@@ -73,6 +87,7 @@ sub show_help {
     print $out_fh "\nAvailable commands:\n";
     print $out_fh "  /new     - Start a new conversation (clears chat history)\n";
     print $out_fh "  /models  - View and switch available AI models\n";
+    print $out_fh "  /ctx     - View or set context token limit (e.g. /ctx 64k)\n";
     print $out_fh "  /claude  - Switch to Anthropic Claude\n";
     print $out_fh "  /gemini  - Switch to Google Gemini\n";
     print $out_fh "  /openai  - Switch to OpenAI-compatible endpoint\n";
@@ -80,6 +95,31 @@ sub show_help {
     print $out_fh "  /manual  - Enable manual mode (require tool confirmation)\n";
     print $out_fh "  /help    - Show available commands\n";
     print $out_fh "  exit     - Exit the agent (or Ctrl-D)\n";
+}
+
+sub handle_ctx_command {
+    my ($args, $out_fh) = @_;
+    $out_fh ||= \*STDOUT;
+
+    if (!defined $args || $args =~ /^\s*$/) {
+        my $cur = get_max_tokens();
+        my $formatted = format_context_size($cur);
+        print $out_fh "Current context limit: $cur tokens ($formatted)\n";
+        print $out_fh "Usage: /ctx <tokens> (e.g. /ctx 8k, /ctx 64k, /ctx 65536)\n";
+        return $cur;
+    }
+
+    $args =~ s/^\s+|\s+$//g;
+    my $tokens = parse_context_size($args);
+    if (!defined $tokens) {
+        print $out_fh "Invalid context size '$args'. Must be a positive integer or unit (e.g. 8k, 64k, 1m, 65536).\n";
+        return undef;
+    }
+
+    set_max_tokens($tokens);
+    my $formatted = format_context_size($tokens);
+    print $out_fh "Context limit set to $tokens tokens ($formatted).\n";
+    return $tokens;
 }
 
 sub handle_auto_command {

@@ -33,7 +33,54 @@ $| = 1;
 # --- Configuration ---
 my $CURL   = $ENV{CLAUDE_CURL}   || (-x '/usr/local/code-toolchain/bin/curl' ? '/usr/local/code-toolchain/bin/curl' : '/usr/local/claude-toolchain/bin/curl');
 my $CACERT = $ENV{CLAUDE_CACERT} || (-f '/usr/local/code-toolchain/cacert.pem' ? '/usr/local/code-toolchain/cacert.pem' : '/usr/local/claude-toolchain/cacert.pem');
-my $MAX_TOKENS = 4096;
+
+sub parse_context_size {
+    my ($input) = @_;
+    return undef unless defined $input;
+    $input =~ s/^\s+|\s+$//g;
+    return undef if $input eq '';
+
+    if ($input =~ /^(\d+)$/) {
+        my $val = int($1);
+        return $val > 0 ? $val : undef;
+    }
+    elsif ($input =~ /^(\d+)([kKmM])$/) {
+        my ($num, $unit) = ($1, lc($2));
+        return undef if $num <= 0;
+        my $mult = ($unit eq 'm') ? 1048576 : 1024;
+        return int($num * $mult);
+    }
+    return undef;
+}
+
+sub format_context_size {
+    my ($tokens) = @_;
+    return '' unless defined $tokens;
+    return "$tokens" unless $tokens =~ /^\d+$/ && $tokens > 0;
+
+    if ($tokens >= 1048576 && ($tokens % 1048576) == 0) {
+        return ($tokens / 1048576) . 'm';
+    }
+    elsif ($tokens >= 1024 && ($tokens % 1024) == 0) {
+        return ($tokens / 1024) . 'k';
+    }
+    return "$tokens";
+}
+
+our $MAX_TOKENS = 8192;
+
+sub init_max_tokens {
+    my $raw_env = (defined $ENV{CLAUDE_MAX_TOKENS} && length $ENV{CLAUDE_MAX_TOKENS})
+        ? $ENV{CLAUDE_MAX_TOKENS}
+        : ((defined $ENV{CLAUDE_CONTEXT} && length $ENV{CLAUDE_CONTEXT}) ? $ENV{CLAUDE_CONTEXT} : undef);
+    if (defined $raw_env) {
+        my $parsed = parse_context_size($raw_env);
+        $MAX_TOKENS = $parsed if defined $parsed;
+    }
+    return $MAX_TOKENS;
+}
+
+init_max_tokens();
 
 # Resolves the environment file path.
 # Prefers ~/.code-agent-env, falling back to legacy ~/.claude-agent-env if it exists.
@@ -63,6 +110,7 @@ sub load_env_file {
         }
         close $fh;
     }
+    init_max_tokens();
 }
 
 # Theme-safe ANSI attributes (zero hardcoded colors; adapts to Terminal profile)

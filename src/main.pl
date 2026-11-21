@@ -62,6 +62,11 @@ while (1) {
         next;
     }
 
+    if ($input =~ m{^/(?:ctx|context)(?:\s+(.*))?$}) {
+        handle_ctx_command($1);
+        next;
+    }
+
     if ($input eq '/claude' || $input eq '/gemini' || $input eq '/openai') {
         my $target = $input eq '/claude' ? 'anthropic'
                    : $input eq '/gemini' ? 'gemini'
