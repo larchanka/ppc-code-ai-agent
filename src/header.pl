@@ -67,7 +67,7 @@ sub format_context_size {
     return "$tokens";
 }
 
-our $MAX_TOKENS = 8192;
+our $MAX_TOKENS = 4096;
 
 sub init_max_tokens {
     my $raw_env = (defined $ENV{CLAUDE_MAX_TOKENS} && length $ENV{CLAUDE_MAX_TOKENS})

@@ -57,7 +57,7 @@ is(format_context_size(1500), '1500', 'format_context_size: 1500 -> 1500');
 # ==================================================================
 # 3. get_max_tokens() and set_max_tokens($tokens)
 # ==================================================================
-is(get_max_tokens(), 8192, 'Default max tokens is 8192 (8k)');
+is(get_max_tokens(), 4096, 'Default max tokens is 4096 (4k)');
 
 is(set_max_tokens(65536), 65536, 'set_max_tokens(65536) returns 65536');
 is(get_max_tokens(), 65536, 'get_max_tokens() returns 65536 after update');
@@ -80,8 +80,8 @@ is(get_max_tokens(), 131072, 'get_max_tokens() preserved after undef');
 # ==================================================================
 # 4. handle_ctx_command($args, $out_fh)
 # ==================================================================
-# Reset back to 8192
-set_max_tokens(8192);
+# Reset back to 4096
+set_max_tokens(4096);
 
 # 4.1 Query mode: no args
 {
@@ -90,8 +90,8 @@ set_max_tokens(8192);
     my $ret = handle_ctx_command('', $fh);
     close $fh;
 
-    is($ret, 8192, 'handle_ctx_command("") returns current limit');
-    like($output, qr/Current max output tokens: 8192 \(8k\)/, 'handle_ctx_command prints current limit');
+    is($ret, 4096, 'handle_ctx_command("") returns current limit');
+    like($output, qr/Current max output tokens: 4096 \(4k\)/, 'handle_ctx_command prints current limit');
     like($output, qr/Usage: \/ctx/, 'handle_ctx_command prints usage');
 }
 
