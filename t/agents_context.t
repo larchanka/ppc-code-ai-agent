@@ -178,20 +178,33 @@ our $SYSTEM_PROMPT;
 }
 
 # ==============================================================================
-# 3. Tests for get_effective_system_prompt
+# 3. Tests for get_current_datetime_string and get_effective_system_prompt
 # ==============================================================================
 {
+    # Test get_current_datetime_string
+    my $now_str = get_current_datetime_string();
+    like($now_str, qr/^\w+,\s+\w+\s+\d+,\s+\d{4}\s+\d{2}:\d{2}:\d{2}$/,
+        'get_current_datetime_string returns human-readable formatted date/time');
+
+    my $fixed_epoch = 1700000000;
+    my $fixed_str = get_current_datetime_string($fixed_epoch);
+    my $expected_fixed = "Current date and time: $fixed_str";
+
     my $tmp_home = tempdir(CLEANUP => 1);
     my $tmp_cwd  = tempdir(CLEANUP => 1);
 
     # When no AGENTS.md files exist
     my $base = "You are an assistant.\n";
-    my $effective = get_effective_system_prompt($base, $tmp_home, $tmp_cwd);
-    is($effective, $base, 'get_effective_system_prompt returns base prompt unchanged when no AGENTS.md exist');
+    my $effective = get_effective_system_prompt($base, $tmp_home, $tmp_cwd, $fixed_epoch);
+    is($effective, "You are an assistant.\n\n$expected_fixed\n",
+        'get_effective_system_prompt appends current date and time');
 
     # When base prompt is undef, defaults to $SYSTEM_PROMPT
-    my $default_prompt = get_effective_system_prompt(undef, $tmp_home, $tmp_cwd);
-    is($default_prompt, $SYSTEM_PROMPT, 'get_effective_system_prompt defaults to $SYSTEM_PROMPT when base is undef');
+    my $default_prompt = get_effective_system_prompt(undef, $tmp_home, $tmp_cwd, $fixed_epoch);
+    like($default_prompt, qr/\bfive tools available\b/i,
+        'get_effective_system_prompt defaults to $SYSTEM_PROMPT when base is undef');
+    like($default_prompt, qr/\Q$expected_fixed\E/,
+        'get_effective_system_prompt includes current date/time with default prompt');
 
     # When AGENTS.md exists
     mkdir("$tmp_home/.agents") or die $!;
@@ -199,9 +212,10 @@ our $SYSTEM_PROMPT;
     print $fh "Global instruction.";
     close $fh;
 
-    my $effective_with_ctx = get_effective_system_prompt($base, $tmp_home, $tmp_cwd);
-    my $expected_with_ctx = "You are an assistant.\n\n# Global Instructions (~/.agents/AGENTS.md)\n\nGlobal instruction.\n";
-    is($effective_with_ctx, $expected_with_ctx, 'get_effective_system_prompt appends context separated by double newline');
+    my $effective_with_ctx = get_effective_system_prompt($base, $tmp_home, $tmp_cwd, $fixed_epoch);
+    my $expected_with_ctx = "You are an assistant.\n\n$expected_fixed\n\n# Global Instructions (~/.agents/AGENTS.md)\n\nGlobal instruction.\n";
+    is($effective_with_ctx, $expected_with_ctx,
+        'get_effective_system_prompt appends date/time and AGENTS.md context');
 }
 
 # ==============================================================================
@@ -217,6 +231,8 @@ our $SYSTEM_PROMPT;
 
     my $req_ant = build_request($messages, []);
     ok(defined $req_ant->{system}, 'build_request (Anthropic) defines system prompt');
+    like($req_ant->{system}, qr/Current date and time:/,
+        'build_request (Anthropic) includes current date and time');
     like($req_ant->{system}, qr/# Project Instructions \(AGENTS\.md\)/,
         'build_request (Anthropic) automatically includes AGENTS.md instructions');
 
@@ -228,6 +244,8 @@ our $SYSTEM_PROMPT;
     my $req_gem = build_request($messages, []);
     ok(defined $req_gem->{systemInstruction}->{parts}->[0]->{text},
         'build_request (Gemini) defines systemInstruction text');
+    like($req_gem->{systemInstruction}->{parts}->[0]->{text}, qr/Current date and time:/,
+        'build_request (Gemini) includes current date and time');
     like($req_gem->{systemInstruction}->{parts}->[0]->{text}, qr/# Project Instructions \(AGENTS\.md\)/,
         'build_request (Gemini) automatically includes AGENTS.md instructions');
 
@@ -238,6 +256,8 @@ our $SYSTEM_PROMPT;
 
     my $req_oai = build_request($messages, []);
     ok(defined $req_oai->{messages}->[0]->{content}, 'build_request (OpenAI) defines leading system message');
+    like($req_oai->{messages}->[0]->{content}, qr/Current date and time:/,
+        'build_request (OpenAI) includes current date and time');
     like($req_oai->{messages}->[0]->{content}, qr/# Project Instructions \(AGENTS\.md\)/,
         'build_request (OpenAI) automatically includes AGENTS.md instructions');
 

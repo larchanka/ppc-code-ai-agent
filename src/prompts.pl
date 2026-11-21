@@ -155,17 +155,35 @@ sub get_agents_context {
     return join("\n\n", @sections);
 }
 
-# Composes base system prompt with discovered AGENTS.md instructions.
-# Returns base prompt unchanged if context is empty.
+# Formats an epoch timestamp into a human-readable date and time string.
+# Defaults to time() if no epoch is provided.
+sub get_current_datetime_string {
+    my ($epoch) = @_;
+    $epoch = time() unless defined $epoch;
+    my ($sec, $min, $hour, $mday, $mon, $year, $wday) = localtime($epoch);
+    my @days   = qw(Sunday Monday Tuesday Wednesday Thursday Friday Saturday);
+    my @months = qw(January February March April May June July August September October November December);
+    return sprintf("%s, %s %d, %04d %02d:%02d:%02d",
+        $days[$wday], $months[$mon], $mday, $year + 1900, $hour, $min, $sec);
+}
+
+# Composes base system prompt with current date/time and discovered AGENTS.md instructions.
 sub get_effective_system_prompt {
-    my ($base_prompt, $home_dir, $cwd) = @_;
+    my ($base_prompt, $home_dir, $cwd, $now) = @_;
     $base_prompt = $SYSTEM_PROMPT unless defined $base_prompt;
-    my $context = get_agents_context($home_dir, $cwd);
-    return $base_prompt unless length $context;
 
     my $prompt = $base_prompt;
     $prompt =~ s/\s+$//;
-    return $prompt . "\n\n" . $context . "\n";
+
+    my $dt_str = "Current date and time: " . get_current_datetime_string($now);
+    $prompt .= "\n\n" . $dt_str . "\n";
+
+    my $context = get_agents_context($home_dir, $cwd);
+    if (length $context) {
+        $prompt .= "\n" . $context . "\n";
+    }
+
+    return $prompt;
 }
 
 1;
