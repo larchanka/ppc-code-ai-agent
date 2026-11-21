@@ -134,6 +134,15 @@ sub clear_thinking_line {
     return "\r\033[K";
 }
 
+sub format_retry_status {
+    my ($retry_num, $max_retries, $delay) = @_;
+    my $text = "* API error, retrying in ${delay}s ($retry_num/$max_retries)...";
+    if (defined $COLOR_DIM && $COLOR_DIM ne '') {
+        return "$COLOR_DIM$text$COLOR_RESET";
+    }
+    return $text;
+}
+
 sub format_subagent_start {
     my ($subagent_type, $task) = @_;
     my $c_sub   = defined $COLOR_SUBAGENT ? $COLOR_SUBAGENT : '';
