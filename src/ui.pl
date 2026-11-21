@@ -118,7 +118,7 @@ sub format_tool_call {
 sub format_thinking_status {
     my ($elapsed) = @_;
     $elapsed = 1 if !defined $elapsed || $elapsed < 1;
-    my $text = "* Thinking ${elapsed}s...";
+    my $text = "\n* Thinking ${elapsed}s...";
     if (defined $COLOR_DIM && $COLOR_DIM ne '') {
         return "$COLOR_DIM$text$COLOR_RESET";
     }
