@@ -283,4 +283,13 @@ close $tf;
     like($out, qr/reached maximum turn limit \(50\)/, "Timeout message returned when max turns reached");
 }
 
+# ==================================================================
+# 7. Prompt guidelines for build sub-agent
+# ==================================================================
+{
+    our $SUBAGENT_BUILD_PROMPT;
+    ok(defined $SUBAGENT_BUILD_PROMPT, "SUBAGENT_BUILD_PROMPT is defined");
+    like($SUBAGENT_BUILD_PROMPT, qr/chain.*run_shell/i, "SUBAGENT_BUILD_PROMPT instructs command chaining");
+}
+
 done_testing();

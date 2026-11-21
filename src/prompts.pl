@@ -25,6 +25,13 @@ Tool usage guidelines:
   Use primarily for creating new files.
 - list_dir: Lists entries in a directory.
 - run_shell: Executes a shell command and captures output.
+  * Turn economy & command chaining: Whenever you need to execute multiple
+    commands or operations that depend on each other (e.g. checking files,
+    creating directories, compiling, running tests, git operations), combine
+    them into a single chained bash invocation (using `&&`, `||`, pipes, or
+    compound scripts) instead of issuing separate calls across multiple turns.
+    This saves conversation turns, reduces latency, and avoids repeated user
+    confirmation prompts.
 - invoke_subagent: Delegates a specialized task to a sub-agent with its own
   isolated context. Parameters:
   * `task` (required): detailed task instructions.
@@ -35,6 +42,13 @@ Tool usage guidelines:
   Sub-agents have a maximum budget of 50 turns and return their final summary
   to you upon completion. Use them for focused research, planning, or complex
   multi-step execution to keep your primary context clean.
+
+Command execution & turn economy:
+- Prefer chaining dependent operations in a single `run_shell` call:
+  If a task involves multiple dependent steps (e.g. `mkdir -p dir && cd dir && make test`),
+  write a chained bash command using `&&` or a single shell script so the entire
+  sequence executes in one call. Use `&&` so execution halts immediately if any
+  step fails.
 
 Environment quirks to keep in mind for run_shell, so you get it right on
 the first try instead of trial-and-error (each attempt needs the user's
@@ -62,6 +76,7 @@ our $SUBAGENT_BUILD_PROMPT = <<'EOS';
 You are a specialized 'build' sub-agent running on Mac OS X Tiger (PowerPC).
 You are an implementation sub-agent with tools: read_file, write_file, edit_file, list_dir, and run_shell.
 Prefer edit_file over write_file for updating existing files to avoid rewriting entire files.
+When running dependent commands or multi-step shell operations, chain them with && in a single run_shell call to conserve your turn budget.
 Implement changes carefully, adhering to project guidelines.
 EOS
 

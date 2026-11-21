@@ -435,5 +435,7 @@ like($SYSTEM_PROMPT, qr/\blist_dir\b/, "SYSTEM_PROMPT documents list_dir");
 like($SYSTEM_PROMPT, qr/\brun_shell\b/, "SYSTEM_PROMPT documents run_shell");
 like($SYSTEM_PROMPT, qr/start_line.*end_line/s, "SYSTEM_PROMPT mentions line slicing parameters");
 like($SYSTEM_PROMPT, qr/prefer\s+`?edit_file`?\s+over\s+`?write_file`?/i, "SYSTEM_PROMPT explains when to prefer edit_file");
+like($SYSTEM_PROMPT, qr/chaining|chained bash/i, "SYSTEM_PROMPT instructs chaining shell commands");
+like($SYSTEM_PROMPT, qr/save turns|turn economy/i, "SYSTEM_PROMPT explains turn economy rationale");
 
 done_testing();
