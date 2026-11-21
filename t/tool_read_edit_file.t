@@ -423,11 +423,13 @@ sub read_file_raw {
 }
 
 # ==================================================================
-# Task 3: System prompt documents all five tools and line-based usage
+# Task 3: System prompt documents tools, XML sections, and line-based usage
 # ==================================================================
 our $SYSTEM_PROMPT;
 ok(defined $SYSTEM_PROMPT, "SYSTEM_PROMPT is defined");
-like($SYSTEM_PROMPT, qr/\bfive tools available\b/i, "SYSTEM_PROMPT mentions five tools");
+like($SYSTEM_PROMPT, qr/<turn_economy>.*<\/turn_economy>/s, "SYSTEM_PROMPT defines <turn_economy> XML section");
+like($SYSTEM_PROMPT, qr/<file_editing>.*<\/file_editing>/s, "SYSTEM_PROMPT defines <file_editing> XML section");
+like($SYSTEM_PROMPT, qr/<tiger_env>.*<\/tiger_env>/s, "SYSTEM_PROMPT defines <tiger_env> XML section");
 like($SYSTEM_PROMPT, qr/\bread_file\b/, "SYSTEM_PROMPT documents read_file");
 like($SYSTEM_PROMPT, qr/\bwrite_file\b/, "SYSTEM_PROMPT documents write_file");
 like($SYSTEM_PROMPT, qr/\bedit_file\b/, "SYSTEM_PROMPT documents edit_file");
@@ -436,6 +438,6 @@ like($SYSTEM_PROMPT, qr/\brun_shell\b/, "SYSTEM_PROMPT documents run_shell");
 like($SYSTEM_PROMPT, qr/start_line.*end_line/s, "SYSTEM_PROMPT mentions line slicing parameters");
 like($SYSTEM_PROMPT, qr/prefer\s+`?edit_file`?\s+over\s+`?write_file`?/i, "SYSTEM_PROMPT explains when to prefer edit_file");
 like($SYSTEM_PROMPT, qr/chaining|chained bash/i, "SYSTEM_PROMPT instructs chaining shell commands");
-like($SYSTEM_PROMPT, qr/save turns|turn economy/i, "SYSTEM_PROMPT explains turn economy rationale");
+like($SYSTEM_PROMPT, qr/save turns|turn_economy/i, "SYSTEM_PROMPT explains turn economy rationale");
 
 done_testing();

@@ -201,7 +201,7 @@ our $SYSTEM_PROMPT;
 
     # When base prompt is undef, defaults to $SYSTEM_PROMPT
     my $default_prompt = get_effective_system_prompt(undef, $tmp_home, $tmp_cwd, $fixed_epoch);
-    like($default_prompt, qr/\bfive tools available\b/i,
+    like($default_prompt, qr/<turn_economy>/i,
         'get_effective_system_prompt defaults to $SYSTEM_PROMPT when base is undef');
     like($default_prompt, qr/\Q$expected_fixed\E/,
         'get_effective_system_prompt includes current date/time with default prompt');
