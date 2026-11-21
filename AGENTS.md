@@ -27,8 +27,11 @@ perl build.pl --check
 # Verify Perl syntax of the standalone agent script
 perl -c code-agent.pl
 
-# Run installation workflow (Finder double-click or CLI)
+# Run installation workflow for PowerPC Tiger (Finder double-click or CLI)
 ./Install.command
+
+# Run installation workflow for modern macOS / Linux (Finder double-click or CLI)
+./modern-install.command
 ```
 
 ### Execution & Running
@@ -47,7 +50,20 @@ perl code-agent.pl
 export CLAUDE_CURL="./curl"
 export CLAUDE_CACERT="./cacert.pem"
 perl code-agent.pl
+
+# Execution using saved configuration file (~/.code-agent-env)
+# Launched via wrapper script:
+code
+# or
+code-agent
 ```
+
+### Environment Configuration (`~/.code-agent-env`)
+Credentials and runtime settings can be placed in `~/.code-agent-env` (`chmod 0600`):
+- `load_env_file()` in `src/header.pl` automatically parses `export KEY=VALUE` or `KEY=VALUE`.
+- Precedence: Active environment variables in `%ENV` override file entries.
+- Fallback: Automatically falls back to `~/.claude-agent-env` if `~/.code-agent-env` does not exist.
+- Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_CURL`, `CLAUDE_CACERT`.
 
 ### Verification & Testing
 ```bash
@@ -77,7 +93,8 @@ For in-depth architectural details, refer to the documentation in the [`context/
 | [`code-agent.pl`](./code-agent.pl) | Standalone interactive CLI agent loop, JSON engine, API adapters, and tool executors | Entrypoint / Distribution Artifact |
 | [`build.pl`](./build.pl) | Pure Perl 5.8.6 manifest-driven build script that compiles `src/*.pl` into `code-agent.pl` | Build Tool |
 | [`src/`](./src/) | Modular source files (10 functional modules, see breakdown below) | Source Tree |
-| [`Install.command`](./Install.command) | Interactive setup script for Finder and terminal, toolchain deployment, API key configuration | Installer Entrypoint |
+| [`Install.command`](./Install.command) | Interactive setup script for PowerPC Tiger (Finder and terminal, toolchain deployment, API key setup) | Installer Entrypoint |
+| [`modern-install.command`](./modern-install.command) | Interactive setup script for modern macOS (Intel/Apple Silicon) and Linux | Installer Entrypoint |
 | [`curl`](./curl) | Prebuilt TLS 1.2/1.3 PowerPC Tiger curl binary | Binary Utility |
 | [`cacert.pem`](./cacert.pem) | Mozilla root certificate bundle for TLS verification | Security Asset |
 | [`README.txt`](./README.txt) | User installation and operational manual | Documentation |

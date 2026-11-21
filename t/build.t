@@ -160,4 +160,26 @@ is($syntax_code, 0, "build.pl compiles cleanly (perl -c)")
     like($content, qr/perl\s+build\.pl/, "Install.command executes perl build.pl");
 }
 
+# Test 7: modern-install.command integration
+{
+    my $modern_cmd_file = File::Spec->catfile($root_dir, 'modern-install.command');
+    ok(-f $modern_cmd_file, "modern-install.command exists");
+    ok(-x $modern_cmd_file, "modern-install.command is executable");
+
+    # Check bash syntax
+    my $syntax_out = `bash -n "$modern_cmd_file" 2>&1`;
+    is($? >> 8, 0, "modern-install.command passes bash -n syntax check")
+        or diag("bash -n failed:\n$syntax_out");
+
+    open my $mfh, '<', $modern_cmd_file or die "Cannot read $modern_cmd_file: $!";
+    my $content = do { local $/; <$mfh> };
+    close $mfh;
+
+    like($content, qr/command\s+-v\s+curl/, "modern-install.command checks for system curl");
+    like($content, qr/command\s+-v\s+perl/, "modern-install.command checks for system perl");
+    like($content, qr/if\s+\[\s+-f\s+["']?build\.pl["']?\s+\]\s+&&\s+\[\s+-d\s+["']?src["']?\s+\];\s*then/s,
+         "modern-install.command checks for build.pl and src/");
+    like($content, qr/perl\s+build\.pl/, "modern-install.command executes perl build.pl");
+}
+
 done_testing();

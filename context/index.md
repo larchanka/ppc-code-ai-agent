@@ -14,6 +14,6 @@ This directory provides structured technical documentation about the system arch
 - **Distribution Script**: [`code-agent.pl`](../code-agent.pl)
 - **Build Tool**: [`build.pl`](../build.pl)
 - **Source Modules**: 11 modules in [`src/`](../src/)
-- **Installer**: [`Install.command`](../Install.command)
+- **Installers**: [`Install.command`](../Install.command) (PowerPC Tiger), [`modern-install.command`](../modern-install.command) (Modern macOS & Linux)
 - **Primary Languages**: Perl 5.8.6, Bash / POSIX Shell
 - **Target Platform**: Apple Mac OS X 10.4 Tiger (PowerPC G3 / G4 / G5)

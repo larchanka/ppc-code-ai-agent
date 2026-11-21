@@ -55,7 +55,23 @@ WHAT'S INSIDE
 - code-agent.pl    : the agent itself (single Perl file, no dependencies)
 - build.pl         : build script to reassemble code-agent.pl from src/
 - src/             : 11 modular source files for the agent (including prompts.pl)
-- Install.command  : the installer you double-click
+- Install.command         : installer for PowerPC Mac OS X Tiger
+- modern-install.command  : installer for modern macOS (Intel/ARM) and Linux
+
+CONFIGURATION & ENVIRONMENT
+-------------------------
+Settings and API keys are stored in "$HOME/.code-agent-env" (permissions 0600):
+- CLAUDE_PROVIDER   : Default provider ("gemini", "anthropic", or "openai")
+- GEMINI_API_KEY    : Google Gemini API key
+- ANTHROPIC_API_KEY : Anthropic Claude API key
+- OPENAI_BASE_URL   : Local LAN endpoint (e.g. http://192.168.1.100:11434/v1)
+- OPENAI_API_KEY    : Local endpoint key ("none")
+- CLAUDE_MODEL      : Override model name
+- CLAUDE_AUTO_MODE  : "1" for autonomous mode, "0" for manual confirmations
+
+To view or edit: nano ~/.code-agent-env
+To change keys: rm ~/.code-agent-env and run Install.command again.
+If ~/.code-agent-env is missing, the agent will check for ~/.claude-agent-env.
 
 BUILDING FROM SOURCE
 -------------------------

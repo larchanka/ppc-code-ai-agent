@@ -58,27 +58,26 @@ No Xcode, MacPorts, Homebrew, or CPAN setup required!
 Copy this repository folder to your PowerPC Mac using a USB drive, local network file share (AFP/SMB), FTP, or Target Disk Mode.
 
 ### 2. Run the Installer
-In the Finder, simply **double-click** `Install.command`:
-
-```
-==================================================
- Code Agent for PowerPC Mac - Installer
-==================================================
-
-Installing curl (TLS 1.2/1.3 capable, prebuilt for PowerPC Tiger)...
-Checking that curl actually works on this Mac... OK
-```
+- **On PowerPC Mac (OS X 10.4 Tiger)**: In Finder or Terminal, run `Install.command`:
+  ```bash
+  ./Install.command
+  ```
+- **On Modern macOS (Intel / Apple Silicon) or Linux**: Run `modern-install.command`:
+  ```bash
+  ./modern-install.command
+  ```
 
 Follow the prompts to:
 1. Select your preferred provider (**Anthropic Claude** or **Google Gemini**).
    > **Tip**: Google Gemini has a free tier with no credit card required at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 2. Enter your API key (stored securely in `~/.code-agent-env`).
-3. Deploy the CLI wrapper to `~/bin/code`.
+3. Deploy the CLI wrapper to `~/bin/code` (or `~/bin/code-agent` if VS Code is detected).
 
 ### 3. Start Chatting
 Open a fresh Terminal window and type:
 ```bash
 code
+# or 'code-agent' on modern systems with VS Code installed
 ```
 
 ---
@@ -270,6 +269,81 @@ If you prefer to run private models without internet access, you can run [Ollama
 
 ---
 
+## ⚙️ Configuration & Environment (`~/.code-agent-env`)
+
+`code-agent` uses a dedicated environment file located at `~/.code-agent-env` to store provider selection, API keys, and runtime preferences.
+
+### How It Works
+
+* **Automatic Loading**: The CLI launchers (`~/bin/code` and `~/bin/code-agent`) source this file before running Perl. In addition, `code-agent.pl` parses it on startup via `load_env_file()`, so credentials load even if you run `perl code-agent.pl` directly.
+* **Security**: The installer sets file permissions to `0600` (`chmod 600 ~/.code-agent-env`), ensuring only your user account can read or write API keys.
+* **Precedence**: Environment variables already defined in your current shell session take precedence over values in `~/.code-agent-env`. You can temporarily override any setting on the command line:
+  ```bash
+  CLAUDE_PROVIDER=anthropic code
+  ```
+* **Backward Compatibility**: If `~/.code-agent-env` is missing, the agent automatically checks for and loads the legacy `~/.claude-agent-env` file.
+
+### Example File
+
+Lines can use standard shell assignment (`export KEY="VALUE"` or `KEY=VALUE`). Blank lines and comments (`#`) are ignored:
+
+```bash
+# ~/.code-agent-env - Code Agent Configuration
+
+# Default provider: "gemini", "anthropic", or "openai"
+export CLAUDE_PROVIDER="gemini"
+
+# Google Gemini API key (free tier at https://aistudio.google.com/apikey)
+export GEMINI_API_KEY="AIzaSy..."
+
+# Anthropic API key (pay-as-you-go at https://console.anthropic.com)
+# export ANTHROPIC_API_KEY="sk-ant-api03-..."
+
+# Local OpenAI / Ollama endpoint (optional)
+# export OPENAI_BASE_URL="http://192.168.1.100:11434/v1"
+# export OPENAI_API_KEY="none"
+
+# Model override (optional; defaults to provider recommendation)
+# export CLAUDE_MODEL="gemini-3.5-flash-lite"
+
+# Autonomous mode: "1" to enable without confirmation, "0" for manual confirmations
+# export CLAUDE_AUTO_MODE="0"
+
+# Typewriter print delay (seconds per char; set to "0" to disable typing effect)
+# export CLAUDE_TYPE_DELAY="0.005"
+```
+
+### Supported Environment Variables
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `CLAUDE_PROVIDER` | Active AI backend: `gemini`, `anthropic`, or `openai` | `anthropic` (or selected in installer) |
+| `GEMINI_API_KEY` | API key for Google Gemini models | None |
+| `ANTHROPIC_API_KEY` | API key for Anthropic Claude models | None |
+| `OPENAI_BASE_URL` | Base URL for OpenAI-compatible API (e.g. `http://localhost:11434/v1`) | None |
+| `OPENAI_API_KEY` | API key for OpenAI-compatible endpoint | `none` |
+| `CLAUDE_MODEL` | Specific model identifier to use with the active provider | `gemini-3.5-flash-lite` / `claude-sonnet-4-5-20250929` |
+| `CLAUDE_AUTO_MODE` | Default tool permission mode: `1` (autonomous) or `0` (manual) | `0` |
+| `CLAUDE_CURL` | Custom path to a TLS 1.2+ capable `curl` binary | Auto-detected / bundled toolchain |
+| `CLAUDE_CACERT` | Custom path to Mozilla root CA certificate bundle (`cacert.pem`) | Auto-detected / `$BUILD_DIR/src/cacert.pem` |
+| `CLAUDE_TYPE_DELAY` | Simulated typing speed in seconds per character (`0` to disable) | `0.005` (PowerPC) / `0.003` (modern) |
+| `NO_COLOR` | Disable ANSI color codes when set to `1` | None |
+
+### Managing Your Credentials
+
+* **To edit credentials**: Open `~/.code-agent-env` in any text editor:
+  ```bash
+  nano ~/.code-agent-env
+  ```
+* **To re-run the setup wizard**: Delete the file and execute the installer:
+  ```bash
+  rm ~/.code-agent-env
+  ./Install.command          # On PowerPC Tiger
+  # or ./modern-install.command  # On modern macOS / Linux
+  ```
+
+---
+
 ## 🧪 Development & Testing
 
 Run the test suite directly on your Mac or any Unix machine with Perl 5.8+:
@@ -311,7 +385,8 @@ Test coverage includes 14 automated test suites:
 - **`code-agent.pl`**: The standalone, self-contained distribution agent script (JSON engine, API adapters, terminal line editor, tool executor) assembled by `build.pl`.
 - **`build.pl`**: Zero-dependency build script that compiles `src/*.pl` into `code-agent.pl` and verifies syntax.
 - **`src/`**: Modular source files (11 domain-specific components: `header.pl`, `prompts.pl`, `json.pl`, `transport.pl`, `providers.pl`, `models_menu.pl`, `session.pl`, `tools.pl`, `terminal.pl`, `ui.pl`, `main.pl`).
-- **`Install.command`**: Interactive double-click setup wizard for Mac OS X Finder and terminal (automatically rebuilds from `src/` if present).
+- **`Install.command`**: Interactive double-click setup wizard for Mac OS X Tiger / PowerPC (automatically rebuilds from `src/` if present).
+- **`modern-install.command`**: Setup wizard for modern macOS (Intel/Apple Silicon) and Linux environments using system curl.
 - **`curl`**: Precompiled PowerPC Tiger binary (statically linked against OpenSSL 1.0.2u with TLS 1.2/1.3 support).
 - **`cacert.pem`**: Mozilla root CA certificate bundle for TLS verification.
 - **`t/`**: Test suite with automated unit and integration tests.

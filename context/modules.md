@@ -165,7 +165,23 @@ A standalone Bash script providing one-click installation on Mac OS X 10.4 Tiger
 
 ---
 
-## 4. Supplementary Assets
+## 4. Module: `modern-install.command`
+
+### Overview
+A Bash installation script tailored for modern macOS (Intel and Apple Silicon) and Linux environments.
+
+### Key Operations
+1. **Host Environment Checks**: Verifies availability of system `perl` and TLS-capable `curl`.
+2. **Build from Source**: Executes `perl build.pl` if `build.pl` and `src/` are present.
+3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/code-build/`.
+4. **Interactive Provider Selection**: Configures Anthropic or Gemini keys securely in `~/.code-agent-env` (`0600` permissions).
+5. **Launcher Wrappers**: Generates `$HOME/bin/code-agent` and symlinks `$HOME/bin/code` (checking for conflicts with VS Code).
+6. **Shell Profile Configuration**: Updates `~/.zshrc`, `~/.bashrc`, and/or `~/.bash_profile` based on active shell and OS platform.
+7. **End-to-End Connectivity Verification**: Verifies API keys against Anthropic or Google Gemini endpoints.
+
+---
+
+## 5. Supplementary Assets
 
 | File | Purpose |
 | :--- | :--- |

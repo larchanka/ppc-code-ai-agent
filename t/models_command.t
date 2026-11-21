@@ -149,9 +149,10 @@ $FORCE_RAW = 0;
 
     # Test 6a: Banner and /help output in interactive loop
     {
-        my $cmd = qq{ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
+        my $cmd = qq{printf "/help\\nexit\\n" | } .
+                  qq{HOME="/nonexistent" ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
                   qq{CLAUDE_CURL="$ENV{CLAUDE_CURL}" CLAUDE_CACERT="$ENV{CLAUDE_CACERT}" } .
-                  qq{printf "/help\\nexit\\n" | $perl $script 2>&1};
+                  qq{$perl $script 2>&1};
         my $output = `$cmd`;
 
         like($output, qr{/models}, "Startup banner or help text advertises /models");
@@ -164,10 +165,11 @@ $FORCE_RAW = 0;
         $ENV{MOCK_CURL_RESPONSE} = '{"data":[{"id":"claude-3-5-sonnet-20241022","display_name":"Claude 3.5 Sonnet"}]}';
         $ENV{MOCK_CURL_HTTP_CODE} = '200';
 
-        my $cmd = qq{ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
+        my $cmd = qq{printf "/models\\nq\\nexit\\n" | } .
+                  qq{HOME="/nonexistent" ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
                   qq{CLAUDE_CURL="$ENV{CLAUDE_CURL}" CLAUDE_CACERT="$ENV{CLAUDE_CACERT}" } .
                   qq{MOCK_CURL_RESPONSE='$ENV{MOCK_CURL_RESPONSE}' MOCK_CURL_HTTP_CODE='200' } .
-                  qq{printf "/models\\nq\\nexit\\n" | $perl $script 2>&1};
+                  qq{$perl $script 2>&1};
         my $output = `$cmd`;
 
         like($output, qr{Cancelled\. Staying on}, "Loop handled /models and printed cancellation");

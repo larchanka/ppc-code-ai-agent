@@ -62,6 +62,7 @@ graph TD
 - **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 52–106, 134–270, 345–640)
 - **Responsibilities**:
   - `MiniJSON`: Zero-dependency recursive descent JSON parser and serializer.
+  - Environment & credential management: `load_env_file()` loads `~/.code-agent-env` (with fallback to `~/.claude-agent-env`) without overriding existing `%ENV` variables.
   - Provider configurations for **Anthropic** (`claude-sonnet-4-5-20250929`), **Gemini** (`gemini-3.5-flash-lite`), and **OpenAI-compatible** local endpoints (e.g. Ollama, llama.cpp on LAN).
   - Runtime provider switching via slash commands (`/claude`, `/gemini`, `/openai`).
   - Request schema translation between Anthropic's messages/tools format, Gemini's contents/functionDeclarations, and OpenAI's chat/completions format.
@@ -98,12 +99,13 @@ graph TD
   - `handle_new_command($out_fh, $session)`: Command handler for `/new` slash command that archives the current session, re-initializes `$CURRENT_SESSION`, and prints user confirmation.
 
 ### 6. Build & Modular Assembly Layer
-- **Location**: [`build.pl`](../build.pl), [`src/`](../src/), [`Install.command`](../Install.command)
+- **Location**: [`build.pl`](../build.pl), [`src/`](../src/), [`Install.command`](../Install.command), [`modern-install.command`](../modern-install.command)
 - **Responsibilities**:
   - Modular decomposition of the monolithic codebase into 11 focused modules in `src/` (`header.pl`, `prompts.pl`, `json.pl`, `transport.pl`, `providers.pl`, `models_menu.pl`, `session.pl`, `tools.pl`, `terminal.pl`, `ui.pl`, `main.pl`).
   - `build.pl`: Pure Perl 5.8.6 manifest-driven assembly script concatenating `src/*.pl` into the single-file distribution executable `code-agent.pl`, applying `chmod 0755`, and verifying syntax (`perl -c`).
   - Supports `--check` for CI/CD synchronization checks, and custom `--src-dir` and `--output` paths.
-  - `Install.command`: Integrates automated `perl build.pl` rebuild when `build.pl` and `src/` are detected before deploying to `$BUILD_DIR/code-agent.pl`.
+  - `Install.command`: Integrates automated `perl build.pl` rebuild when `build.pl` and `src/` are detected before deploying to `$BUILD_DIR/code-agent.pl` on PowerPC Tiger.
+  - `modern-install.command`: Automates modern macOS / Linux deployment utilizing system curl, perl, and shell profile path configuration.
 
 ## Data Flow & Lifecycle
 

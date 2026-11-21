@@ -9,9 +9,12 @@ This document inventories internal module relationships, system toolchains, bund
 - **Application Entrypoint**:
   - [`code-agent.pl`](../code-agent.pl): Standalone agent. Invokes `curl` via shell/exec for HTTPS operations.
 - **Installer Entrypoint**:
-  - [`Install.command`](../Install.command): Copies and provisions `code-agent.pl`, `curl`, and `cacert.pem` into `$HOME/code-toolchain` and `$HOME/code-build`.
+  - [`Install.command`](../Install.command): Copies and provisions `code-agent.pl`, `curl`, and `cacert.pem` into `$HOME/code-toolchain` and `$HOME/code-build` for PowerPC Tiger.
+  - [`modern-install.command`](../modern-install.command): Provisions `code-agent.pl` and `cacert.pem` using host curl and perl on modern macOS and Linux.
 - **Generated Wrapper**:
-  - `$HOME/bin/code`: Sourced shell wrapper pointing to `$HOME/.code-agent-env`, `$HOME/code-toolchain/bin/curl`, and `$HOME/code-build/code-agent.pl`.
+  - `$HOME/bin/code` and `$HOME/bin/code-agent`: Sourced shell wrappers pointing to `$HOME/.code-agent-env`, curl, and `$HOME/code-build/code-agent.pl`.
+- **Environment Configuration**:
+  - `$HOME/.code-agent-env`: Persistent credentials and preferences file (`0600` permissions), with fallback to legacy `~/.claude-agent-env`. Sourced by wrapper scripts and parsed by `src/header.pl`.
 
 ---
 
