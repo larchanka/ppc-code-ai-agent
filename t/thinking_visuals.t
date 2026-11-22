@@ -143,18 +143,18 @@ our ($COLOR_DIM, $COLOR_RESET);
     local $COLOR_DIM   = "\x1b[2m";
     local $COLOR_RESET = "\x1b[0m";
 
-    is(format_thinking_status(1), "\x1b[2m\n* Thinking 1s...\x1b[0m", 'format_thinking_status: 1s with color');
-    is(format_thinking_status(5), "\x1b[2m\n* Thinking 5s...\x1b[0m", 'format_thinking_status: 5s with color');
-    is(format_thinking_status(0), "\x1b[2m\n* Thinking 1s...\x1b[0m", 'format_thinking_status: 0s clamped to 1s with color');
-    is(format_thinking_status(undef), "\x1b[2m\n* Thinking 1s...\x1b[0m", 'format_thinking_status: undef clamped to 1s with color');
+    is(format_thinking_status(1), "\x1b[2m* Thinking 1s...\x1b[0m", 'format_thinking_status: 1s with color');
+    is(format_thinking_status(5), "\x1b[2m* Thinking 5s...\x1b[0m", 'format_thinking_status: 5s with color');
+    is(format_thinking_status(0), "\x1b[2m* Thinking 1s...\x1b[0m", 'format_thinking_status: 0s clamped to 1s with color');
+    is(format_thinking_status(undef), "\x1b[2m* Thinking 1s...\x1b[0m", 'format_thinking_status: undef clamped to 1s with color');
 
     # No color mode
     $COLOR_DIM   = '';
     $COLOR_RESET = '';
 
-    is(format_thinking_status(1), "\n* Thinking 1s...", 'format_thinking_status: 1s without color');
-    is(format_thinking_status(12), "\n* Thinking 12s...", 'format_thinking_status: 12s without color');
-    is(format_thinking_status(0), "\n* Thinking 1s...", 'format_thinking_status: 0s clamped to 1s without color');
+    is(format_thinking_status(1), "* Thinking 1s...", 'format_thinking_status: 1s without color');
+    is(format_thinking_status(12), "* Thinking 12s...", 'format_thinking_status: 12s without color');
+    is(format_thinking_status(0), "* Thinking 1s...", 'format_thinking_status: 0s clamped to 1s without color');
 }
 
 # ==================================================================
@@ -166,7 +166,7 @@ our ($COLOR_DIM, $COLOR_RESET);
         local $COLOR_DIM   = "\x1b[2m";
         local $COLOR_RESET = "\x1b[0m";
 
-        is(finalize_thinking_line(3), "\r\x1b[2m\n* Thinking 3s...\x1b[0m\n", 'finalize_thinking_line: with color ends with newline and starts with CR');
+        is(finalize_thinking_line(3), "\r\x1b[2m* Thinking 3s...\x1b[0m\n", 'finalize_thinking_line: with color ends with newline and starts with CR');
     }
 
     # Finalize without color
@@ -174,7 +174,7 @@ our ($COLOR_DIM, $COLOR_RESET);
         local $COLOR_DIM   = '';
         local $COLOR_RESET = '';
 
-        is(finalize_thinking_line(7), "\r\n* Thinking 7s...\n", 'finalize_thinking_line: without color');
+        is(finalize_thinking_line(7), "\r* Thinking 7s...\n", 'finalize_thinking_line: without color');
     }
 
     # Clear line completely
