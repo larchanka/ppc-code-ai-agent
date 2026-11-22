@@ -103,7 +103,13 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `format_retry_status($retry_num, $max_retries, $delay)`: Formats transient API error retry countdown indicator (`* API error, retrying in Xs (N/M)...`).
 - `finalize_thinking_line($elapsed)`: Replaces active progress with final thinking duration.
 - `clear_thinking_line()`: Clears transient thinking line via carriage return and ANSI line clear (`\r\033[K`).
-- `slow_print($text)`: Prints output with simulated typewriter delay for vintage terminal ambiance.
+- `slow_print($text)`: Prints output with simulated typewriter delay for vintage terminal ambiance (emitting ANSI SGR escape sequences atomically with zero delay).
+
+#### Markdown Rendering (`src/markdown.pl`)
+- `render_markdown($text)`: Top-level Markdown renderer formatting headers (`#`–`######`), fenced code blocks, pipe tables, lists, task checkboxes, blockquotes, horizontal rules, and inline styles for Mac OS X 10.4 Tiger `Terminal.app`.
+- `format_inline_markdown($text)`: Formats inline code spans, Markdown links (`label` + `(url)`), `**bold**` / `__bold__`, and `*underline*` / `_underline_` (with word-boundary protection for `snake_case` identifiers).
+- `_render_markdown_table($lines_ref)`: Parses and aligns Markdown pipe tables into ASCII box grids (`+---+---+`) with Bold + Magenta headers and column alignment (`:---`, `:---:`, `---:`).
+- `_init_standalone_markdown_colors()`: Initializes fallback ANSI color globals when `src/markdown.pl` is executed standalone from the command line.
 
 #### Network & Tool Execution
 - `_call_api_once($url, $headers_ref, $body_json, $method)`: Executes a single HTTP request via bundled `curl` with SSL certificate bundle, decodes JSON, and checks for HTTP non-2xx status or provider error objects.
@@ -131,7 +137,7 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 ## 2. Module: `build.pl`
 
 ### Overview
-A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 11 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
+A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 12 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
 
 ### Command Line Interface
 - `perl build.pl`: Concatenates `src/*.pl` in manifest order, writes `code-agent.pl`, and verifies syntax.
@@ -148,8 +154,9 @@ A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN depe
 6. `src/session.pl`: Session management, state accessors, slash command handlers.
 7. `src/tools.pl`: Tool definitions (`@TOOLS`), confirmation helpers, Gemini setup helpers, `run_tool` dispatcher.
 8. `src/terminal.pl`: Pure-Perl interactive readline engine with history and ANSI cursor positioning.
-9. `src/ui.pl`: Formatting helpers for tool summaries, tool calls, and thinking status.
-10. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
+9. `src/markdown.pl`: Pure-Perl Markdown renderer for Mac OS X 10.4 Tiger terminal and standalone preview utility.
+10. `src/ui.pl`: Formatting helpers for tool summaries, tool calls, thinking status, and ANSI-aware `slow_print`.
+11. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
 
 ---
 
