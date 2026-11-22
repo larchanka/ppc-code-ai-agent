@@ -416,7 +416,7 @@ sub run_tool {
             return "Cancelled by user.";
         }
         my $output = `$command 2>&1`;
-        return $output eq '' ? '(no output)' : $output;
+        return (!defined $output || $output eq '') ? '(no output)' : $output;
     }
     elsif ($name eq 'invoke_subagent') {
         my $task = $input->{task};

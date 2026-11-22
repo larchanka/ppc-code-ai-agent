@@ -125,6 +125,15 @@ unlink $test_file if -e $test_file;
     is($confirm_calls, 0, "run_tool run_shell in auto mode does not call confirm()");
     like($res_shell, qr/auto shell output/, "run_tool run_shell executed command in auto mode");
 
+    my @warnings;
+    {
+        local $SIG{__WARN__} = sub { push @warnings, @_ };
+        my $res_undef = run_tool('run_shell', { command => "true\0ignored" });
+        is($res_undef, '(no output)', "run_tool run_shell handles undef backtick output as (no output)");
+    }
+    my @uninit_warnings = grep { /uninitialized value \$output/ } @warnings;
+    is(scalar(@uninit_warnings), 0, "run_tool run_shell does not emit uninitialized warning when backticks return undef");
+
     unlink $test_file if -e $test_file;
 }
 
