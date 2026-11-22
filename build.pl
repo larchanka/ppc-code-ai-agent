@@ -15,6 +15,7 @@ my @MODULES = (
     'src/session.pl',
     'src/tools.pl',
     'src/terminal.pl',
+    'src/markdown.pl',
     'src/ui.pl',
     'src/main.pl',
 );

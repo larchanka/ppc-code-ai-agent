@@ -163,7 +163,8 @@ while (1) {
         for my $block (@content_blocks) {
             if ($block->{type} eq 'text') {
                 print "\n${COLOR_MODEL}Code AI>${COLOR_RESET} ";
-                slow_print("$block->{text}\n");
+                my $rendered = render_markdown($block->{text});
+                slow_print("$rendered\n");
                 print $COLOR_RESET;
             }
             elsif ($block->{type} eq 'tool_use') {
