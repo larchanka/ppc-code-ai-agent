@@ -173,6 +173,7 @@ sub format_subagent_finish {
 
 sub slow_print {
     my ($text) = @_;
+    return unless defined $text && length $text;
     my $delay = $ENV{CLAUDE_TYPE_DELAY};
     $delay = 0.006 unless defined $delay && $delay ne '';
     $delay = 0 + $delay;
@@ -180,9 +181,11 @@ sub slow_print {
         print $text;
         return;
     }
-    for my $ch (split //, $text) {
-        print $ch;
-        select(undef, undef, undef, $ch eq "\n" ? $delay * 12 : $delay);
+    while ($text =~ /(\x1b\[[0-9;]*[A-Za-z]|.)/sg) {
+        my $tok = $1;
+        print $tok;
+        next if length($tok) > 1; # ANSI escape sequence: no delay
+        select(undef, undef, undef, $tok eq "\n" ? $delay * 12 : $delay);
     }
 }
 
