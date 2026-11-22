@@ -225,6 +225,132 @@ ok(defined &format_inline_markdown, 'format_inline_markdown subroutine is define
     );
     is(render_markdown($no_sep_table), $expected_no_sep,
        'Pipe table without alignment separator row renders clean ASCII grid without header divider');
+
+    # Slice 9: Terminal-Width Multi-Line Cell Word-Wrapping (Case B)
+    {
+        local $ENV{COLUMNS} = 80;
+        my $wide_table = join("\n",
+            "| Feature / Category | AMD Athlon 64 | Intel Pentium 4 |",
+            "| :--- | :--- | :--- |",
+            "| Architecture & Pipeline | Short 12-stage pipeline designed for high instructions-per-clock efficiency and low branch misprediction penalty. | Very deep 31-stage Prescott NetBurst pipeline designed to maximize raw clock frequency at the expense of IPC. |",
+            "| Memory Controller | Integrated on-die DDR memory controller with direct HyperTransport link reducing latency drastically. | Traditional Front-Side Bus architecture routed through external Northbridge chipset adding memory latency. |"
+        );
+        my $rendered_80 = render_markdown($wide_table);
+        my @lines_80 = split /\n/, $rendered_80;
+        ok(@lines_80 > 8, 'Wide 3-column table wraps into multiple physical lines on 80-col terminal');
+        my $max_vis_80 = 0;
+        my $all_pipes_aligned = 1;
+        my $first_border = $lines_80[0];
+        my @plus_positions;
+        while ($first_border =~ /\+/g) {
+            push @plus_positions, pos($first_border) - 1;
+        }
+        for my $l (@lines_80) {
+            my $vw = _visible_width($l);
+            $max_vis_80 = $vw if $vw > $max_vis_80;
+            (my $plain_l = $l) =~ s/\x1b\[[0-9;]*[A-Za-z]//g;
+            for my $p (@plus_positions) {
+                my $ch = substr($plain_l, $p, 1);
+                if (!defined($ch) || ($ch ne '+' && $ch ne '|')) {
+                    $all_pipes_aligned = 0;
+                }
+            }
+        }
+        cmp_ok($max_vis_80, '<=', 80, 'Every line of 80-col wrapped table fits within 80 columns');
+        ok($all_pipes_aligned, 'Vertical | borders align with + corners on every single physical line');
+        my @border_lines = grep { /^\s*\+[-+]+\+\s*$/ } @lines_80;
+        is(scalar(@border_lines), 4, 'Multi-line wrapped table emits row divider border between data rows (top, header, row1-row2, bottom)');
+
+        local $ENV{COLUMNS} = 120;
+        my $rendered_120 = render_markdown($wide_table);
+        my @lines_120 = split /\n/, $rendered_120;
+        my $max_vis_120 = 0;
+        for my $l (@lines_120) {
+            my $vw = _visible_width($l);
+            $max_vis_120 = $vw if $vw > $max_vis_120;
+        }
+        cmp_ok($max_vis_120, '<=', 120, 'Every line of 120-col wrapped table fits within 120 columns');
+        cmp_ok(scalar(@lines_120), '<', scalar(@lines_80), '120-col terminal requires fewer wrapped lines than 80-col terminal');
+    }
+
+    # Slice 10: ANSI style continuity across wrapped cell lines & long unbroken token splitting
+    {
+        local $ENV{COLUMNS} = 50;
+        my $ansi_table = join("\n",
+            "| ColA | ColB |",
+            "| :--- | :--- |",
+            "| **Bold text that wraps across multiple physical lines inside cell one** | Plain second column |"
+        );
+        my $rendered_ansi = render_markdown($ansi_table);
+        my @ansi_lines = split /\n/, $rendered_ansi;
+        my @data_lines = grep { /^  \|/ && !/ColA/ } @ansi_lines;
+        cmp_ok(scalar(@data_lines), '>=', 2, 'Bold cell wraps across at least 2 physical lines');
+        like($data_lines[0], qr/\x1b\[1mBold.*\x1b\[0m\s*\|\s*Plain/,
+             'Line 1 of wrapped bold cell closes ANSI bold with RESET before the | border so it does not bleed into ColB');
+        like($data_lines[1], qr/^  \|\s*\x1b\[1m/,
+             'Line 2 of wrapped bold cell re-opens ANSI bold at the start of the continuation cell');
+
+        # Long unbroken word (e.g. URL/path exceeding column width)
+        my $url_table = join("\n",
+            "| Key | Endpoint |",
+            "| :--- | :--- |",
+            "| api | `https://vintage-powerpc-tiger-server.example.com/v1/chat/completions/stream` |"
+        );
+        my $rendered_url = render_markdown($url_table);
+        my @url_lines = split /\n/, $rendered_url;
+        my $max_url_vis = 0;
+        for my $l (@url_lines) {
+            my $vw = _visible_width($l);
+            $max_url_vis = $vw if $vw > $max_url_vis;
+        }
+        cmp_ok($max_url_vis, '<=', 50, 'Long unbroken token (inline code URL) is hard-broken cleanly within column width');
+        my @url_data = grep { /^  \|/ && !/Endpoint/ } @url_lines;
+        cmp_ok(scalar(@url_data), '>=', 2, 'Long unbroken URL wraps across multiple lines');
+        like($url_data[0], qr/\x1b\[34mhttps:.*\x1b\[0m\s*\|$/,
+             'First chunk of broken inline-code URL resets color before right border');
+        like($url_data[1], qr/\|\s*\x1b\[34m/,
+             'Second chunk of broken inline-code URL restores inline-code color');
+    }
+
+    # Slice 11: Vertical Card Fallback (Case C: too many columns to fit side-by-side at >= 10 chars each)
+    {
+        local $ENV{COLUMNS} = 80;
+        my $many_cols_table = join("\n",
+            "| C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |",
+            "|---|---|---|---|---|---|---|---|",
+            "| Alpha value 1 | Beta value 2 | Gamma value 3 | Delta value 4 | Epsilon value 5 | Zeta value 6 | Eta value 7 | Theta value 8 closely wrapped to verify card layout |"
+        );
+        my $rendered_cards = render_markdown($many_cols_table);
+        like($rendered_cards, qr/C1\x1b\[0m\s*:\s*Alpha value 1/,
+             '8-column table on 80-col terminal triggers vertical card fallback format (Header : Value)');
+        like($rendered_cards, qr/C8\x1b\[0m\s*:\s*Theta value 8/,
+             'Card fallback renders all columns as labeled key-value rows');
+        my $max_card_vis = 0;
+        for my $l (split /\n/, $rendered_cards) {
+            my $vw = _visible_width($l);
+            $max_card_vis = $vw if $vw > $max_card_vis;
+        }
+        cmp_ok($max_card_vis, '<=', 80, 'Every line in vertical card fallback fits within 80-column terminal');
+
+        # Card fallback without header separator row
+        my $headerless_wide = join("\n",
+            "| A111111111 | B222222222 | C333333333 | D444444444 | E555555555 | F666666666 | G777777777 | H888888888 |",
+            "| I111111111 | J222222222 | K333333333 | L444444444 | M555555555 | N666666666 | O777777777 | P888888888 |"
+        );
+        my $rendered_hl_cards = render_markdown($headerless_wide);
+        like($rendered_hl_cards, qr/Col 1.*:\s*A111111111/,
+             'Headerless wide table uses Col 1..Col N labels in card fallback mode');
+
+        # Compact 8-column table that fits naturally within 80 columns stays a grid (not cards)
+        my $compact_many_cols = join("\n",
+            "| A | B | C | D | E | F | G | H |",
+            "|---|---|---|---|---|---|---|---|",
+            "| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |"
+        );
+        my $rendered_compact_8 = render_markdown($compact_many_cols);
+        like($rendered_compact_8, qr/^  \+---\+---\+---\+---\+---\+---\+---\+---\+$/m,
+             'Compact 8-column table that fits within 80 columns renders as normal ASCII grid instead of cards');
+    }
 }
 
 done_testing();

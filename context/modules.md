@@ -108,7 +108,11 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 #### Markdown Rendering (`src/markdown.pl`)
 - `render_markdown($text)`: Top-level Markdown renderer formatting headers (`#`–`######`), fenced code blocks, pipe tables, lists, task checkboxes, blockquotes, horizontal rules, and inline styles for Mac OS X 10.4 Tiger `Terminal.app`.
 - `format_inline_markdown($text)`: Formats inline code spans, Markdown links (`label` + `(url)`), `**bold**` / `__bold__`, and `*underline*` / `_underline_` (with word-boundary protection for `snake_case` identifiers).
-- `_render_markdown_table($lines_ref)`: Parses and aligns Markdown pipe tables into ASCII box grids (`+---+---+`) with Bold + Magenta headers and column alignment (`:---`, `:---:`, `---:`).
+- `_get_markdown_term_cols([$override_cols])`: Resolves active terminal width in columns via override parameter, `$ENV{COLUMNS}`, `_term_size()`, or 80-column fallback.
+- `_allocate_table_col_widths($natural_widths, $term_cols)`: Computes hybrid table layout mode (`grid` vs `cards`) and column width budgets so rendered tables fit within terminal width while preserving compact label columns.
+- `_wrap_table_cell($formatted_text, $col_width)`: Word-wraps formatted cell text to `$col_width` visible characters (breaking long tokens cleanly outside ANSI escape sequences) while closing and restoring active ANSI SGR styles across line boundaries to prevent border bleed.
+- `_render_markdown_table_cards($formatted_rows, $has_header, $num_cols, $term_cols)`: Renders wide multi-column tables that cannot fit side-by-side in vertical key-value card format (`Header : Wrapped Value`).
+- `_render_markdown_table($lines_ref)`: Parses and aligns Markdown pipe tables into terminal-width-aware multi-line ASCII box grids (`+---+---+`) or vertical cards with Bold + Magenta headers and column alignment (`:---`, `:---:`, `---:`).
 - `_init_standalone_markdown_colors()`: Initializes fallback ANSI color globals when `src/markdown.pl` is executed standalone from the command line.
 
 #### Network & Tool Execution
