@@ -43,6 +43,7 @@ Vintage Macs are wonderful pieces of industrial design and distraction-free comp
 - **Bundled Modern TLS `curl`**: Includes a prebuilt, statically-linked PowerPC `curl` binary with OpenSSL 1.0.2u supporting **TLS 1.2 & TLS 1.3**, alongside a current Mozilla `cacert.pem` root certificate bundle.
 - **Multi-Provider AI**: Connects to **Anthropic Claude**, **Google Gemini** (with a free tier requiring no credit card), or **Local OpenAI-compatible models** (Ollama, llama.cpp, LocalAI running on your home LAN).
 - **Agentic Tool Execution**: Autonomously inspects directories, reads files, writes code, and executes shell commands directly on your Mac.
+- **Custom Instructions & Skills Discovery**: Automatically loads global (`~/.agents/AGENTS.md`) and project (`./AGENTS.md`) instructions, plus indexes global (`~/.agents/skills/<name>/SKILL.md`) and project (`./.agents/skills/<name>/SKILL.md`) skills via bounded 4 KB frontmatter scanning for lazy on-demand loading via `read_file`.
 - **Autonomous Sub-Agents**: Delegates complex tasks to specialized sub-agents with isolated conversation contexts (`plan` for read-only exploration and `build` for implementation), preserving context tokens and displaying progress in an indented tree view.
 - **Automatic LLM Call Retries**: Resilient transport layer that automatically retries failed or transient LLM API calls up to **3 retries** with a **5-second** delay between attempts (configurable via `CLAUDE_MAX_RETRIES` and `CLAUDE_RETRY_DELAY`).
 - **Safety Modes**: Switch between **Manual Mode** (`/manual`, requiring user confirmation for disk writes and commands) and **Autonomous Mode** (`/auto`, executing tools automatically).
@@ -370,7 +371,7 @@ perl -c code-agent.pl
 prove -v t/*.t
 ```
 
-Test coverage includes 16 automated test suites:
+Test coverage includes 17 automated test suites:
 - `t/agents_context.t`: Global (~/.agents/AGENTS.md) and project-local instructions loading and deduplication.
 - `t/auto_manual_commands.t`: Unit tests for `/auto`, `/manual`, state accessors, and tool bypass logic.
 - `t/banner.t`: Unit tests for two-tone ANSI banner formatting, 80-column bounds, and `$NO_COLOR` graceful degradation.
@@ -383,6 +384,7 @@ Test coverage includes 16 automated test suites:
 - `t/new_command.t`: Session reset, conversation archiving, and context clearing tests.
 - `t/retry.t`: Unit tests for automatic LLM API call retry logic (max 3 retries, 5s delay, transient HTTP/JSON/provider error recovery, and sub-agent resilience).
 - `t/select_model_interactive.t`: Terminal menu navigation, key reading, and scrolling tests.
+- `t/skills_context.t`: Global (`~/.agents/skills`) and project (`./.agents/skills`) skill frontmatter parsing, scope tagging (`[global]` / `[project]`), `dev`/`ino` deduplication, and lazy `<available_skills>` system prompt injection.
 - `t/subagents.t`: Unit tests for sub-agent invocation (`plan`/`build`), turn countdown injection, loop limits, and ANSI tree formatting.
 - `t/thinking_visuals.t`: Extended reasoning / thinking progress visual timers.
 - `t/tool_call_visuals.t`: ANSI formatting and compact parameter summaries for tool calls.

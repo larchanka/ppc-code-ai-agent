@@ -35,6 +35,11 @@ The agent can also autonomously delegate tasks to specialized sub-agents
 ("plan" for read-only exploration, "build" for implementation) with their
 own isolated context to keep conversation history clean.
 
+In addition, the agent automatically discovers custom instructions from
+"~/.agents/AGENTS.md" and "./AGENTS.md", as well as reusable skills from
+"~/.agents/skills/<name>/SKILL.md" and "./.agents/skills/<name>/SKILL.md"
+(indexed by YAML frontmatter and loaded on demand via read_file).
+
 REQUIREMENTS
 ------------------------
 - A PowerPC Mac running Mac OS X 10.4 (Tiger) -- tested on an iBook G4
