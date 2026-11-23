@@ -314,6 +314,23 @@ sub read_secret_or_cancel {
     return $cancelled ? undef : $buf;
 }
 
+my %UNTRUSTED_OUTPUT_TOOLS = (
+    read_file       => 1,
+    list_dir        => 1,
+    run_shell       => 1,
+    invoke_subagent => 1,
+);
+
+sub format_tool_result {
+    my ($name, $result) = @_;
+    $result = '' unless defined $result;
+    return $result unless defined $name && $UNTRUSTED_OUTPUT_TOOLS{$name};
+
+    my $sanitized = $result;
+    $sanitized =~ s{<(/(?i:untrusted_tool_output)\b)}{<\\$1}g;
+    return "<untrusted_tool_output tool=\"$name\">\n$sanitized\n</untrusted_tool_output>";
+}
+
 sub run_tool {
     my ($name, $input) = @_;
 
@@ -515,8 +532,9 @@ sub run_subagent {
                 $result = run_tool($t_name, $t_input);
             }
 
+            my $fenced_result = format_tool_result($t_name, $result);
             my $countdown_note = get_subagent_countdown_note($turn, $max_turns, $turns_left);
-            my $content_with_countdown = "$result\n\n$countdown_note";
+            my $content_with_countdown = "$fenced_result\n\n$countdown_note";
 
             push @tool_results, {
                 type        => 'tool_result',

@@ -174,7 +174,7 @@ while (1) {
                     type => 'tool_result',
                     tool_use_id => $block->{id},
                     name => $block->{name},
-                    content => $result,
+                    content => format_tool_result($block->{name}, $result),
                 };
             }
         }
