@@ -125,6 +125,28 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `get_subagent_tools($type)`: Returns filtered tool list for sub-agents (`plan`: strictly read-only `read_file` and `list_dir`; `build`: full tools excluding recursive `invoke_subagent`).
 - `run_subagent($task, $subagent_type)`: Executes synchronous turn-based sub-agent loop up to 50 turns with isolated conversation session, turn countdown context injection, and visual tree formatting.
 
+#### Remote Model Context Protocol (MCP) Client (`src/mcp.pl`)
+- `get_mcp_config_path()`: Discovers configuration file path checking `CLAUDE_MCP_CONFIG`, `./mcp_servers.json`, `~/.code-agent-mcp.json`, and legacy `~/.claude-agent-mcp.json`.
+- `parse_mcp_config($json_text)`: Parses JSON string containing server definitions in `{ "mcpServers": { ... } }` or flat `{ "server": { ... } }` format into normalized server descriptors.
+- `load_mcp_config([$file])`: Reads and parses server definitions from discovered or explicit config path, merging with inline servers from `CLAUDE_MCP_SERVERS`.
+- `mcp_build_request($method, $params, $id)`: Constructs standard JSON-RPC 2.0 request payload.
+- `mcp_build_notification($method, $params)`: Constructs standard JSON-RPC 2.0 notification payload (omitting `id`).
+- `mcp_build_init_request()`: Builds MCP `initialize` request with client capabilities and protocol version (`2024-11-05`).
+- `mcp_build_init_notification()`: Builds MCP `notifications/initialized` notification payload.
+- `mcp_build_tools_list_request()`: Builds MCP `tools/list` request payload.
+- `mcp_build_tools_call_request($tool_name, $arguments)`: Builds MCP `tools/call` request payload.
+- `mcp_parse_response($resp_json_or_hash)`: Parses JSON-RPC response, extracting `result` payload or throwing formatted error on `error` payload.
+- `mcp_normalize_tool_schema($tool_def)`: Normalizes MCP tool definitions, mapping `inputSchema` to `input_schema` for provider compatibility.
+- `mcp_normalize_tool($server_name, $tool_def)`: Namespaces tool names as `mcp__<server>__<tool>` and populates metadata for registration.
+- `mcp_http_post($server_info, $payload_hash)`: Executes secure HTTP POST via curl config files (`-K`, `0600` permissions) with custom headers, `mcp-session-id` tracking, and 20s timeout.
+- `mcp_connect_server($name)`: Executes MCP handshake (`initialize` -> `notifications/initialized` -> `tools/list`) and dynamically registers tools into `%MCP_TOOLS` and `@TOOLS`.
+- `mcp_disconnect_server($name)`: Disconnects server and purges its tools from `@TOOLS` and `%MCP_TOOLS`.
+- `mcp_unregister_server_tools($name)`: Removes tools belonging to `$name` from `@TOOLS`.
+- `mcp_execute_tool($tool_name, $arguments)`: Dispatches tool call to remote server over JSON-RPC `tools/call`, handles errors, and returns formatted result string.
+- `mcp_format_call_result($result)`: Extracts and joins `text` blocks from tool call response content array.
+- `mcp_init_all()`: Discovers and initiates connections to all configured servers at agent startup.
+- `handle_mcp_command($in_fh, $out_fh, $args)`: Subcommand dispatcher for `/mcp` (`list`, `add`, `remove`, `refresh`).
+
 #### Prompts & Context Loading (`src/prompts.pl`)
 - `$SYSTEM_PROMPT`: Default system prompt for the primary agent loop.
 - `$SUBAGENT_PLAN_PROMPT`: Default prompt for the read-only planning sub-agent.
@@ -142,7 +164,7 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 ## 2. Module: `build.pl`
 
 ### Overview
-A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 12 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
+A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 13 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
 
 ### Command Line Interface
 - `perl build.pl`: Concatenates `src/*.pl` in manifest order, writes `code-agent.pl`, and verifies syntax.
@@ -151,17 +173,19 @@ A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN depe
 - `perl build.pl --output <file>`: Sets custom output file.
 
 ### Ordered Assembly Manifest
-1. `src/header.pl`: Pragmas, UTF-8 binmode, constants, colors, cursor helpers, env helpers, globals, `configure_provider`, `$SYSTEM_PROMPT`.
-2. `src/json.pl`: Pure-Perl JSON parser and encoder (`MiniJSON`).
-3. `src/transport.pl`: Curl invocation (`call_api`) and shell quotation (`quote`).
-4. `src/providers.pl`: Provider-specific header/request builders, response parsers, model discovery.
-5. `src/models_menu.pl`: Interactive curses-like terminal model selector.
-6. `src/session.pl`: Session management, state accessors, slash command handlers.
-7. `src/tools.pl`: Tool definitions (`@TOOLS`), confirmation helpers, Gemini setup helpers, `run_tool` dispatcher.
-8. `src/terminal.pl`: Pure-Perl interactive readline engine with history and ANSI cursor positioning.
-9. `src/markdown.pl`: Pure-Perl Markdown renderer for Mac OS X 10.4 Tiger terminal and standalone preview utility.
-10. `src/ui.pl`: Formatting helpers for tool summaries, tool calls, thinking status, and ANSI-aware `slow_print`.
-11. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
+1. `src/header.pl`: Pragmas, UTF-8 binmode, constants, colors, cursor helpers, env helpers, globals, `configure_provider`.
+2. `src/prompts.pl`: System prompts (`$SYSTEM_PROMPT`), sub-agent instructions (`$SUBAGENT_PLAN_PROMPT`, `$SUBAGENT_BUILD_PROMPT`), AGENTS.md discovery and prompt composition helpers.
+3. `src/json.pl`: Pure-Perl JSON parser and encoder (`MiniJSON`).
+4. `src/transport.pl`: Curl invocation (`call_api`) and shell quotation (`quote`).
+5. `src/providers.pl`: Provider-specific header/request builders, response parsers, model discovery.
+6. `src/models_menu.pl`: Interactive curses-like terminal model selector.
+7. `src/session.pl`: Session management, state accessors, slash command handlers.
+8. `src/tools.pl`: Tool definitions (`@TOOLS`), confirmation helpers, Gemini setup helpers, `run_tool` dispatcher.
+9. `src/mcp.pl`: Remote Model Context Protocol (MCP) client, JSON-RPC protocol, tool registration, `/mcp` command.
+10. `src/terminal.pl`: Pure-Perl interactive readline engine with history and ANSI cursor positioning.
+11. `src/markdown.pl`: Pure-Perl Markdown renderer for Mac OS X 10.4 Tiger terminal and standalone preview utility.
+12. `src/ui.pl`: Formatting helpers for tool summaries, tool calls, thinking status, and ANSI-aware `slow_print`.
+13. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
 
 ---
 

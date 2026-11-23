@@ -63,7 +63,8 @@ Credentials and runtime settings can be placed in `~/.code-agent-env` (`chmod 06
 - `load_env_file()` in `src/header.pl` automatically parses `export KEY=VALUE` or `KEY=VALUE`.
 - Precedence: Active environment variables in `%ENV` override file entries.
 - Fallback: Automatically falls back to `~/.claude-agent-env` if `~/.code-agent-env` does not exist.
-- Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_CURL`, `CLAUDE_CACERT`.
+- Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_CURL`, `CLAUDE_CACERT`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`.
+- Remote MCP server configuration is discovered from `~/.code-agent-mcp.json`, `./mcp_servers.json`, or environment variables.
 
 ### Verification & Testing
 ```bash
@@ -92,7 +93,7 @@ For in-depth architectural details, refer to the documentation in the [`context/
 | :--- | :--- | :--- |
 | [`code-agent.pl`](./code-agent.pl) | Standalone interactive CLI agent loop, JSON engine, API adapters, and tool executors | Entrypoint / Distribution Artifact |
 | [`build.pl`](./build.pl) | Pure Perl 5.8.6 manifest-driven build script that compiles `src/*.pl` into `code-agent.pl` | Build Tool |
-| [`src/`](./src/) | Modular source files (12 functional modules, see breakdown below) | Source Tree |
+| [`src/`](./src/) | Modular source files (13 functional modules, see breakdown below) | Source Tree |
 | [`Install.command`](./Install.command) | Interactive setup script for PowerPC Tiger (Finder and terminal, toolchain deployment, API key setup) | Installer Entrypoint |
 | [`modern-install.command`](./modern-install.command) | Interactive setup script for modern macOS (Intel/Apple Silicon) and Linux | Installer Entrypoint |
 | [`curl`](./curl) | Prebuilt TLS 1.2/1.3 PowerPC Tiger curl binary | Binary Utility |
@@ -100,7 +101,7 @@ For in-depth architectural details, refer to the documentation in the [`context/
 | [`README.txt`](./README.txt) | User installation and operational manual | Documentation |
 
 ### Modular Source Layout (`src/*.pl`) & Build System
-`code-agent.pl` is generated from 12 modular files in `src/` concatenated in an explicit manifest order:
+`code-agent.pl` is generated from 13 modular files in `src/` concatenated in an explicit manifest order:
 1. `src/header.pl`: Pragmas, config, colors, cursor, env helpers, globals, `configure_provider`.
 2. `src/prompts.pl`: System prompts (`$SYSTEM_PROMPT`), sub-agent instructions (`$SUBAGENT_PLAN_PROMPT`, `$SUBAGENT_BUILD_PROMPT`), AGENTS.md discovery and prompt composition helpers.
 3. `src/json.pl`: Pure-Perl JSON parser & encoder (`MiniJSON`).
@@ -109,10 +110,11 @@ For in-depth architectural details, refer to the documentation in the [`context/
 6. `src/models_menu.pl`: Interactive curses-like terminal model selection menu.
 7. `src/session.pl`: Session management, state accessors, slash command handlers.
 8. `src/tools.pl`: Tool definitions (`@TOOLS`, including `invoke_subagent`), sub-agent runner (`run_subagent`), confirmation helpers, Gemini setup helpers, `run_tool`.
-9. `src/terminal.pl`: Pure-Perl interactive readline implementation with history and ANSI cursor positioning.
-10. `src/markdown.pl`: Pure-Perl 5.8.6 Markdown renderer tailored for Mac OS X 10.4 Tiger `Terminal.app` (`render_markdown`, `format_inline_markdown`, ASCII tables, and standalone CLI preview mode).
-11. `src/ui.pl`: Formatting helpers for tool calls, sub-agent tree visuals, summaries, thinking status, and ANSI-aware `slow_print`.
-12. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
+9. `src/mcp.pl`: Remote Model Context Protocol (MCP) client, JSON-RPC 2.0 protocol engine, dynamic tool discovery and registration, curl transport, and `/mcp` command handler.
+10. `src/terminal.pl`: Pure-Perl interactive readline implementation with history and ANSI cursor positioning.
+11. `src/markdown.pl`: Pure-Perl 5.8.6 Markdown renderer tailored for Mac OS X 10.4 Tiger `Terminal.app` (`render_markdown`, `format_inline_markdown`, ASCII tables, and standalone CLI preview mode).
+12. `src/ui.pl`: Formatting helpers for tool calls, sub-agent tree visuals, summaries, thinking status, and ANSI-aware `slow_print`.
+13. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
 
 #### Build Tool Usage (`build.pl`)
 - `perl build.pl`: Concatenates `src/*.pl`, applies `chmod 0755`, runs `perl -c code-agent.pl`.
@@ -130,7 +132,7 @@ Follow these rules on every task:
 2. **Mac OS X 10.4 Tiger Compatibility**: Do not use Perl features newer than 5.8.6 (avoid `state` variables, `say`, defined-or `//`, named regex captures, modern unicode properties).
 3. **Surgical Changes & Source Editing**: Touch only lines necessary for requested features or fixes. Do not reformat unrelated subroutines or comments. When modifying functionality, edit the appropriate source file in `src/*.pl` and run `perl build.pl` to regenerate `code-agent.pl`.
 4. **Preserve Raw STDIN / UTF-8 Separation**: Keep STDIN as raw bytes to prevent multibyte boundary corruption in Perl 5.8.6 PerlIO. Decode explicitly at line or buffer boundaries.
-5. **Preserve User Confirmations on Side Effects**: All filesystem modifications (`write_file`, `edit_file`) and command executions (`run_shell`) MUST check user permissions via `confirm_tool()`, which respects `$AUTO_MODE` (controlled by `/auto` and `/manual` slash commands or `$ENV{CLAUDE_AUTO_MODE}`) and delegates to interactive `confirm()` when in manual mode. Direct user prompts (e.g. saving API keys) must continue using `confirm()`.
+5. **Preserve User Confirmations on Side Effects**: All filesystem modifications (`write_file`, `edit_file`), command executions (`run_shell`), and remote MCP tool calls (`mcp__<server>__<tool>`) MUST check user permissions via `confirm_tool()`, which respects `$AUTO_MODE` (controlled by `/auto` and `/manual` slash commands or `$ENV{CLAUDE_AUTO_MODE}`) and delegates to interactive `confirm()` when in manual mode. Outputs from remote MCP tools and file/shell executions must remain protected via untrusted output spotlighting (`<untrusted_tool_output>`). Direct user prompts (e.g. saving API keys) must continue using `confirm()`.
 
 ---
 

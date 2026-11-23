@@ -28,6 +28,8 @@ unless (caller) {
 
 get_current_session();
 
+mcp_init_all();
+
 show_banner();
 
 while (1) {
@@ -64,6 +66,11 @@ while (1) {
 
     if ($input =~ m{^/(?:ctx|context)(?:\s+(.*))?$}) {
         handle_ctx_command($1);
+        next;
+    }
+
+    if ($input =~ m{^/mcp(?:\s+(.*))?$}) {
+        handle_mcp_command($1);
         next;
     }
 

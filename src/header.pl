@@ -195,6 +195,9 @@ our $SESSION_COUNTER = 0;
 our $LAST_API_ELAPSED = 0;
 our $CURRENT_SUBAGENT_TYPE = undef;
 
+# Remote MCP and tool output tracking globals
+our (%MCP_SERVERS, %MCP_TOOLS, %UNTRUSTED_OUTPUT_TOOLS);
+
 # (Re)configures $API_KEY, $MODEL, $API_URL, etc. according to $provider.
 # Called at startup and by /claude and /gemini commands during conversation.
 # If corresponding environment variables (ANTHROPIC_API_KEY / GEMINI_API_KEY)

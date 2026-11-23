@@ -1,7 +1,12 @@
-# Task Breakdown: Markdown Preview for Agent Responses
+# Task Breakdown: Remote MCP Support (Model Context Protocol)
 
-- [x] 1. Build system & styling constants (`src/header.pl`, `build.pl`, `t/build.t`)
-- [x] 2. Markdown renderer module (`src/markdown.pl`) — inline formatting, headers, code blocks, lists, blockquotes, horizontal rules, tables, `NO_COLOR` fallback, and standalone CLI mode
-- [x] 3. UI & Main REPL integration (`src/ui.pl` ANSI-aware `slow_print`, `src/main.pl` calling `render_markdown`, `perl build.pl` to rebuild `code-agent.pl`)
-- [x] 4. Comprehensive unit and integration tests in `t/markdown.t`, refactoring quality gates (CRAP < 10, clone-check, mutation verification), and full test suite verification (`prove -l t/*.t`)
-- [x] 5. Update codebase context & symbol graphs as required by `AGENTS.md` section 5 (`ast_scanner.py`, `dependency_graph.py`, `symbol_graph.py`, `verify_context.py`, and context docs)
+- [x] 1. Build manifest, constants & configuration discovery (`build.pl`, `src/mcp.pl`, `t/build.t`, `t/mcp.t`)
+- [x] 2. Pure-Perl MCP JSON-RPC 2.0 protocol engine (`src/mcp.pl`, `t/mcp.t`)
+- [x] Checkpoint: Foundation & Protocol Engine Verified (`perl -I. t/build.t`, `perl -I. t/mcp.t`)
+- [x] 3. Remote MCP HTTP transport client (`src/mcp.pl`, `t/mcp.t`)
+- [x] 4. Server connection lifecycle & dynamic tool registration (`src/mcp.pl`, `t/mcp.t`)
+- [x] Checkpoint: Tool Discovery & Registration Verified (`perl -I. t/mcp.t`)
+- [x] 5. Tool invocation dispatcher, confirmation & output sanitization (`src/tools.pl`, `src/mcp.pl`, `t/mcp.t`, `t/subagents.t`)
+- [x] 6. Interactive `/mcp` slash command & REPL startup integration (`src/session.pl`, `src/main.pl`, `src/mcp.pl`, `t/mcp.t`)
+- [x] Checkpoint: Complete End-to-End Remote MCP Flow Verified (`prove -l t/`, `perl build.pl --check`)
+- [x] 7. Codebase context & symbol graphs update (`code-agent.pl`, `context/*`, `AGENTS.md`, `README.txt`, `verify_context.py`)

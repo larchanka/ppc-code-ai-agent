@@ -61,12 +61,17 @@ Any action that alters disk contents or executes arbitrary system instructions M
 - `write_file`: Mandatory call to `confirm_tool("Write to file '$path'?")`.
 - `edit_file`: Mandatory call to `confirm_tool("Edit file '$path' (lines $start_line-$end_line)?")`.
 - `run_shell`: Mandatory call to `confirm_tool("Run this command: $command")`.
+- Remote MCP tools (`mcp__<server>__<tool>`): Mandatory call to `confirm_tool("Call remote MCP tool '$tool_name'?")`.
 - If the user declines, the tool must return `"Cancelled by user."` rather than throwing an exception.
 - `confirm_tool(...)` respects `$AUTO_MODE` (toggled by `/auto` and `/manual` slash commands): in autonomous mode, prompts execute immediately; in manual mode, it prompts the user with `[y/N]`.
 - When executed from an active sub-agent, `confirm_tool(...)` automatically tags prompts with `[Sub-agent: $type]` for user attribution.
 
+### Prompt Injection Defense & Untrusted Output Tagging
+- Outputs from all tools returning unverified external data (`read_file`, `list_dir`, `run_shell`, `invoke_subagent`, and all remote MCP tools) are wrapped via `format_tool_result()` in `<untrusted_tool_output tool="$name">...</untrusted_tool_output>` fences.
+- Embedded `</untrusted_tool_output>` strings within tool outputs are escaped to `<\/untrusted_tool_output>` to prevent fence escape.
+
 ### Sub-Agent Safety & Context Isolation
-- **Role Permissions**: `plan` sub-agents are strictly read-only (`read_file`, `list_dir`) and must never be granted mutation tools (`write_file`, `edit_file`, `run_shell`). Attempts to invoke mutation tools under `plan` are rejected at runtime.
+- **Role Permissions**: `plan` sub-agents are strictly read-only (`read_file`, `list_dir`) and must never be granted mutation tools (`write_file`, `edit_file`, `run_shell`) or remote MCP tools. Attempts to invoke mutation tools under `plan` are rejected at runtime. `build` sub-agents have access to full tools including remote MCP tools.
 - **Recursion Guard**: Sub-agents cannot invoke further sub-agents (`invoke_subagent` is excluded from sub-agent toolsets).
 - **Turn Budget Limit**: Sub-agent loops are capped at a hard limit of 50 turns. The remaining turn count is injected into the initial task prompt and every subsequent tool result context (`[Turn X of 50. Turns remaining: Y]`).
 

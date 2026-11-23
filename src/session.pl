@@ -93,6 +93,7 @@ sub show_help {
     print $out_fh "  /openai  - Switch to OpenAI-compatible endpoint\n";
     print $out_fh "  /auto    - Enable auto mode (run tools without confirmation)\n";
     print $out_fh "  /manual  - Enable manual mode (require tool confirmation)\n";
+    print $out_fh "  /mcp     - Manage remote Model Context Protocol (MCP) servers\n";
     print $out_fh "  /help    - Show available commands\n";
     print $out_fh "  exit     - Exit the agent (or Ctrl-D)\n";
 }

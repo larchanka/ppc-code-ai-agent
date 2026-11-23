@@ -15,6 +15,7 @@ This document inventories internal module relationships, system toolchains, bund
   - `$HOME/bin/code` and `$HOME/bin/code-agent`: Sourced shell wrappers pointing to `$HOME/.code-agent-env`, curl, and `$HOME/code-build/code-agent.pl`.
 - **Environment Configuration**:
   - `$HOME/.code-agent-env`: Persistent credentials and preferences file (`0600` permissions), with fallback to legacy `~/.claude-agent-env`. Sourced by wrapper scripts and parsed by `src/header.pl`.
+  - `$HOME/.code-agent-mcp.json` / `mcp_servers.json`: Persistent MCP server configuration file discovered by `src/mcp.pl` (or configured via `CLAUDE_MCP_CONFIG` / `CLAUDE_MCP_SERVERS`).
 
 ---
 
@@ -36,3 +37,4 @@ This document inventories internal module relationships, system toolchains, bund
 | `https://api.anthropic.com/v1/messages` | HTTPS (TLS 1.2/1.3) | Anthropic | Claude 3.5 Sonnet / Claude Sonnet 4.5 LLM chat completions and tool calls |
 | `https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent` | HTTPS (TLS 1.2/1.3) | Google | Gemini models (`gemini-3.5-flash-lite`, etc.) chat and tool use |
 | `http://{LAN_HOST}:{PORT}/v1/chat/completions` | HTTP/HTTPS | Local / Self-Hosted | OpenAI-compatible local LLM endpoints (Ollama, llama.cpp, LM Studio) |
+| `http://{HOST}:{PORT}/...` | HTTP/HTTPS (JSON-RPC 2.0) | Remote MCP Servers | Model Context Protocol dynamic tool discovery (`tools/list`) and execution (`tools/call`) |

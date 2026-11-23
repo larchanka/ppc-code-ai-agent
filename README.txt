@@ -23,6 +23,7 @@ Once started, you can chat with the agent or enter slash commands:
 - /new     : Start a new conversation (clears history and resets context)
 - /models  : View and switch available AI models
 - /ctx     : View or set max output tokens per response (default: 4k; e.g. /ctx 64k, /ctx 65536)
+- /mcp     : Manage remote MCP servers and tools (/mcp list, add, remove, refresh)
 - /claude  : Switch to Anthropic Claude
 - /gemini  : Switch to Google Gemini
 - /openai  : Switch to OpenAI-compatible endpoint (e.g. local LAN Ollama)
@@ -34,6 +35,25 @@ Once started, you can chat with the agent or enter slash commands:
 The agent can also autonomously delegate tasks to specialized sub-agents
 ("plan" for read-only exploration, "build" for implementation) with their
 own isolated context to keep conversation history clean.
+
+REMOTE MCP SUPPORT (MODEL CONTEXT PROTOCOL)
+--------------------------------------------
+The agent supports Model Context Protocol (MCP) servers over HTTP/JSON-RPC.
+Servers can be configured via ~/.code-agent-mcp.json, ./mcp_servers.json,
+or environment variables:
+{
+  "mcpServers": {
+    "weather": {
+      "url": "http://192.168.1.50:8000/mcp",
+      "headers": { "Authorization": "Bearer token123" }
+    }
+  }
+}
+At runtime, manage servers via "/mcp":
+- /mcp or /mcp list             : View connected servers and tools
+- /mcp add <name> <url> [headers]: Connect and discover tools
+- /mcp remove <name>            : Disconnect server and purge its tools
+- /mcp refresh (or /mcp reload) : Re-query tools from all servers
 
 In addition, the agent automatically discovers custom instructions from
 "~/.agents/AGENTS.md" and "./AGENTS.md", as well as reusable skills from
@@ -60,7 +80,7 @@ WHAT'S INSIDE
 - cacert.pem       : current CA certificate bundle
 - code-agent.pl    : the agent itself (single Perl file, no dependencies)
 - build.pl         : build script to reassemble code-agent.pl from src/
-- src/             : 11 modular source files for the agent (including prompts.pl)
+- src/             : 13 modular source files for the agent (including prompts.pl, mcp.pl)
 - Install.command         : installer for PowerPC Mac OS X Tiger
 - modern-install.command  : installer for modern macOS (Intel/ARM) and Linux
 
@@ -76,6 +96,8 @@ Settings and API keys are stored in "$HOME/.code-agent-env" (permissions 0600):
 - CLAUDE_AUTO_MODE  : "1" for autonomous mode, "0" for manual confirmations
 - CLAUDE_MAX_RETRIES: Max retry attempts on LLM API errors (default: 3)
 - CLAUDE_RETRY_DELAY: Delay in seconds between API retries (default: 5)
+- CLAUDE_MCP_CONFIG : Path to MCP configuration JSON file
+- CLAUDE_MCP_SERVERS: Inline JSON string of MCP server configurations
 
 To view or edit: nano ~/.code-agent-env
 To change keys: rm ~/.code-agent-env and run Install.command again.
