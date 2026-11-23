@@ -120,6 +120,7 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `call_api($url, $headers_ref, $body_json, $method)`: Wraps `_call_api_once` with automatic retry logic up to `get_max_retries()` times (default 3 retries) waiting `get_retry_delay()` seconds (default 5s) between attempts.
 - `confirm($prompt)`: Displays an interactive `[y/N]` prompt requiring affirmative user consent.
 - `confirm_tool($prompt)`: Tool permission gate returning `1` if `$AUTO_MODE` is enabled, or delegating to `confirm($prompt)` in manual mode (prefixed with `[Sub-agent: $type]` when invoked under a sub-agent).
+- `format_tool_result($name, $result)`: Wraps outputs of untrusted-data tools (`read_file`, `list_dir`, `run_shell`, `invoke_subagent`) in `<untrusted_tool_output tool="$name">...</untrusted_tool_output>` fences after escaping any embedded closing `</untrusted_tool_output>` tags (`<\/untrusted_tool_output>`).
 - `run_tool($name, $input)`: Executes requested agent tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`, `invoke_subagent`), gating side effects through `confirm_tool()`.
 - `get_subagent_tools($type)`: Returns filtered tool list for sub-agents (`plan`: strictly read-only `read_file` and `list_dir`; `build`: full tools excluding recursive `invoke_subagent`).
 - `run_subagent($task, $subagent_type)`: Executes synchronous turn-based sub-agent loop up to 50 turns with isolated conversation session, turn countdown context injection, and visual tree formatting.
