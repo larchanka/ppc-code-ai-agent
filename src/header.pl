@@ -183,7 +183,7 @@ END {
 my ($PROVIDER, $API_KEY, $MODEL, $API_URL, $ANTHROPIC_VERSION);
 
 # Application version.
-our $VERSION = '1.2.1';
+our $VERSION = '1.2.2';
 
 # Autonomous tool execution mode. When enabled, tools that normally require
 # confirmation (write_file, run_shell) execute immediately without prompting.
