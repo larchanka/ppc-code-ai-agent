@@ -129,6 +129,7 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `get_mcp_config_path()`: Discovers configuration file path checking `CLAUDE_MCP_CONFIG`, `./mcp_servers.json`, and `~/.code-agent/mcp.json`.
 - `parse_mcp_config($json_text)`: Parses JSON string containing server definitions in `{ "mcpServers": { ... } }` or flat `{ "server": { ... } }` format into normalized server descriptors.
 - `load_mcp_config([$file])`: Reads and parses server definitions from discovered or explicit config path, merging with inline servers from `CLAUDE_MCP_SERVERS`.
+- `save_mcp_config([$file])`: Serializes current `%MCP_SERVERS` definitions into `{"mcpServers": {...}}` JSON and writes to `~/.code-agent/mcp.json` (or explicit path) with `0600` permissions.
 - `mcp_build_request($method, $params, $id)`: Constructs standard JSON-RPC 2.0 request payload.
 - `mcp_build_notification($method, $params)`: Constructs standard JSON-RPC 2.0 notification payload (omitting `id`).
 - `mcp_build_init_request()`: Builds MCP `initialize` request with client capabilities and protocol version (`2024-11-05`).

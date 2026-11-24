@@ -1642,4 +1642,40 @@ sub read_test_file {
     unlike($json_out, qr/"additionalProperties"/, "Gemini request JSON has zero additionalProperties");
 }
 
+# Test 54: save_mcp_config and /mcp add/remove persistence across restarts
+{
+    my $tmp_dir = tempdir(CLEANUP => 1);
+    local $ENV{HOME} = $tmp_dir;
+    local $ENV{CLAUDE_MCP_CONFIG} = undef;
+    local $ENV{CLAUDE_MCP_SERVERS} = undef;
+
+    local %main::MCP_SERVERS = (
+        persist_srv => {
+            name => 'persist_srv',
+            url => 'http://127.0.0.1:8000/mcp',
+            headers => { Authorization => 'Bearer secret123' },
+        },
+    );
+
+    my ($ok, $path) = save_mcp_config();
+    ok($ok, "save_mcp_config succeeds");
+    is($path, File::Spec->catfile($tmp_dir, '.code-agent', 'mcp.json'), "Saved to ~/.code-agent/mcp.json");
+    ok(-f $path, "Config file exists on disk");
+
+    my $loaded = load_mcp_config();
+    ok(exists $loaded->{persist_srv}, "Persisted server reloaded by load_mcp_config");
+    is($loaded->{persist_srv}{url}, 'http://127.0.0.1:8000/mcp', "Persisted URL reloaded correctly");
+    is($loaded->{persist_srv}{headers}{Authorization}, 'Bearer secret123', "Persisted headers reloaded correctly");
+
+    # Test removal persistence via handle_mcp_command
+    my $out = "";
+    open my $fh, ">", \$out;
+    handle_mcp_command("remove persist_srv", $fh);
+    close $fh;
+    ok(!exists $main::MCP_SERVERS{persist_srv}, "Removed from memory");
+
+    my $reloaded_after_remove = load_mcp_config();
+    ok(!exists $reloaded_after_remove->{persist_srv}, "Removal persisted to disk");
+}
+
 done_testing();

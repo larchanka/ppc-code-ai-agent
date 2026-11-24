@@ -168,6 +168,54 @@ sub load_mcp_config {
     return wantarray ? %MCP_SERVERS : \%MCP_SERVERS;
 }
 
+# Serializes current %MCP_SERVERS into JSON format and writes to configuration file.
+# Defaults to get_mcp_config_path() or ~/.code-agent/mcp.json.
+sub save_mcp_config {
+    my ($file) = @_;
+    unless (defined $file && length $file) {
+        $file = get_mcp_config_path();
+        if (!defined $file) {
+            my $home = $ENV{HOME} || '.';
+            my $dir = "$home/.code-agent";
+            if (!-d $dir) {
+                mkdir $dir, 0700;
+                chmod 0700, $dir;
+            }
+            $file = "$dir/mcp.json";
+        }
+    }
+
+    (my $dir = $file) =~ s{/[^/]+$}{};
+    if (length $dir && !-d $dir) {
+        mkdir $dir, 0700;
+        chmod 0700, $dir;
+    }
+
+    my %servers_to_save;
+    for my $name (sort keys %MCP_SERVERS) {
+        my $srv = $MCP_SERVERS{$name};
+        next unless ref($srv) eq 'HASH' && defined $srv->{url} && length $srv->{url};
+        my %entry = ( url => $srv->{url} );
+        if (defined $srv->{headers} && ref($srv->{headers}) eq 'HASH' && keys %{$srv->{headers}}) {
+            $entry{headers} = $srv->{headers};
+        }
+        $servers_to_save{$name} = \%entry;
+    }
+
+    my $payload = { mcpServers => \%servers_to_save };
+    my $json = eval { MiniJSON::encode($payload) };
+    return (0, "JSON encode error: $@") if $@ || !defined $json;
+
+    if (open(my $fh, '>', $file)) {
+        chmod 0600, $file;
+        print $fh $json . "\n";
+        close $fh;
+        return (1, $file);
+    } else {
+        return (0, "Cannot write $file: $!");
+    }
+}
+
 # --- MCP JSON-RPC 2.0 Protocol Engine ---
 
 # Constructs a JSON-RPC 2.0 request hash.
@@ -1012,7 +1060,12 @@ sub _mcp_cmd_add {
     my ($ok, $count_or_err) = mcp_connect_server($name);
     if ($ok) {
         my $num = defined $count_or_err ? $count_or_err : 0;
-        print $out_fh "Connected to MCP server '$name'. Discovered $num tool(s).\n";
+        my ($saved, $save_info) = save_mcp_config();
+        if ($saved) {
+            print $out_fh "Connected to MCP server '$name'. Discovered $num tool(s). Saved to $save_info.\n";
+        } else {
+            print $out_fh "Connected to MCP server '$name'. Discovered $num tool(s).\n";
+        }
         return 1;
     } else {
         my $err = defined $count_or_err ? $count_or_err : 'Connection failed';
@@ -1039,6 +1092,7 @@ sub _mcp_cmd_remove {
 
     mcp_disconnect_server($name);
     delete $MCP_SERVERS{$name};
+    save_mcp_config();
     print $out_fh "Removed MCP server '$name'.\n";
     return 1;
 }
