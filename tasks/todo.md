@@ -1,12 +1,7 @@
-# Task Breakdown: Remote MCP Support (Model Context Protocol)
+# Task Breakdown: Stability, Performance & Ergonomics Improvements
 
-- [x] 1. Build manifest, constants & configuration discovery (`build.pl`, `src/mcp.pl`, `t/build.t`, `t/mcp.t`)
-- [x] 2. Pure-Perl MCP JSON-RPC 2.0 protocol engine (`src/mcp.pl`, `t/mcp.t`)
-- [x] Checkpoint: Foundation & Protocol Engine Verified (`perl -I. t/build.t`, `perl -I. t/mcp.t`)
-- [x] 3. Remote MCP HTTP transport client (`src/mcp.pl`, `t/mcp.t`)
-- [x] 4. Server connection lifecycle & dynamic tool registration (`src/mcp.pl`, `t/mcp.t`)
-- [x] Checkpoint: Tool Discovery & Registration Verified (`perl -I. t/mcp.t`)
-- [x] 5. Tool invocation dispatcher, confirmation & output sanitization (`src/tools.pl`, `src/mcp.pl`, `t/mcp.t`, `t/subagents.t`)
-- [x] 6. Interactive `/mcp` slash command & REPL startup integration (`src/session.pl`, `src/main.pl`, `src/mcp.pl`, `t/mcp.t`)
-- [x] Checkpoint: Complete End-to-End Remote MCP Flow Verified (`prove -l t/`, `perl build.pl --check`)
-- [x] 7. Codebase context & symbol graphs update (`code-agent.pl`, `context/*`, `AGENTS.md`, `README.txt`, `verify_context.py`)
+- [x] 1. Pure-Perl JSON Edge-Case Hardening & Unit Tests (`src/json.pl`, `t/json.t`, `build.pl`)
+- [x] 2. Enforce Perl 5.8.6 Compatibility in CI (`.github/workflows/test.yml`)
+- [x] 3. Context & Token Budgeting for Slow CPUs (`src/session.pl`, `src/main.pl`, `t/compact_context.t`)
+- [x] 4. Interactive Local/OpenAI Endpoint Configuration (`src/main.pl`, `t/openai_switch.t`)
+- [x] 5. Documentation, Build & Context Graph Synchronization (`build.pl`, `code-agent.pl`, `context/*`)

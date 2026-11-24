@@ -63,13 +63,20 @@ Credentials and runtime settings are placed in `~/.code-agent/env` (`chmod 0600`
 - `load_env_file()` in `src/header.pl` automatically parses `export KEY=VALUE` or `KEY=VALUE`.
 - Precedence: Active environment variables in `%ENV` override file entries.
 - Migration: Install scripts (`Install.command`, `modern-install.command`) migrate legacy `~/.code-agent-env` and `~/.claude-agent-env` into `~/.code-agent/env`.
-- Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_CURL`, `CLAUDE_CACERT`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`.
+- Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_AUTO_COMPACT`, `CLAUDE_COMPACT_THRESHOLD_CHARS`, `CLAUDE_COMPACT_THRESHOLD_TURNS`, `CLAUDE_CURL`, `CLAUDE_CACERT`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`.
+- Interactive `/openai` (and `/local`) switching automatically normalizes base URLs (via `normalize_openai_endpoint()`) and can persist them to `~/.code-agent/env` via `save_env_vars()`.
 - Remote MCP server configuration is discovered from `~/.code-agent/mcp.json`, `./mcp_servers.json`, or environment variables.
 
 ### Verification & Testing
 ```bash
 # Perl syntax check
 perl -c code-agent.pl
+
+# Verify strict Perl 5.8.6 syntax compatibility across repository
+perl scripts/check_minimum_version.pl --perl 5.008006 code-agent.pl build.pl scripts/check_minimum_version.pl src/*.pl
+
+# Run full test suite
+prove -I. t/*.t
 
 # Verify context documentation integrity
 python3 ~/.gemini/config/skills/codebase-context-generator/scripts/verify_context.py --root .
@@ -94,6 +101,7 @@ For in-depth architectural details, refer to the documentation in the [`context/
 | [`code-agent.pl`](./code-agent.pl) | Standalone interactive CLI agent loop, JSON engine, API adapters, and tool executors | Entrypoint / Distribution Artifact |
 | [`build.pl`](./build.pl) | Pure Perl 5.8.6 manifest-driven build script that compiles `src/*.pl` into `code-agent.pl` | Build Tool |
 | [`src/`](./src/) | Modular source files (13 functional modules, see breakdown below) | Source Tree |
+| [`scripts/check_minimum_version.pl`](./scripts/check_minimum_version.pl) | Perl 5.8.6 static syntax checker and compatibility verification tool | Verification Tool |
 | [`Install.command`](./Install.command) | Interactive setup script for PowerPC Tiger (Finder and terminal, toolchain deployment, API key setup) | Installer Entrypoint |
 | [`modern-install.command`](./modern-install.command) | Interactive setup script for modern macOS (Intel/Apple Silicon) and Linux | Installer Entrypoint |
 | [`curl`](./curl) | Prebuilt TLS 1.2/1.3 PowerPC Tiger curl binary | Binary Utility |
@@ -129,10 +137,11 @@ For in-depth architectural details, refer to the documentation in the [`context/
 Follow these rules on every task:
 
 1. **Zero External Perl Dependencies**: `code-agent.pl` MUST remain 100% self-contained in standard Perl 5.8.6. Never introduce `cpan` dependencies or modern modules (e.g., `JSON::XS`, `LWP::UserAgent`, `Mojo::*`).
-2. **Mac OS X 10.4 Tiger Compatibility**: Do not use Perl features newer than 5.8.6 (avoid `state` variables, `say`, defined-or `//`, named regex captures, modern unicode properties).
+2. **Mac OS X 10.4 Tiger Compatibility**: Do not use Perl features newer than 5.8.6 (avoid `state` variables, `say`, defined-or `//`, named regex captures, modern unicode properties). Compatibility is mechanically enforced in CI and verified via `scripts/check_minimum_version.pl`.
 3. **Surgical Changes & Source Editing**: Touch only lines necessary for requested features or fixes. Do not reformat unrelated subroutines or comments. When modifying functionality, edit the appropriate source file in `src/*.pl` and run `perl build.pl` to regenerate `code-agent.pl`.
 4. **Preserve Raw STDIN / UTF-8 Separation**: Keep STDIN as raw bytes to prevent multibyte boundary corruption in Perl 5.8.6 PerlIO. Decode explicitly at line or buffer boundaries.
 5. **Preserve User Confirmations on Side Effects**: All filesystem modifications (`write_file`, `edit_file`), command executions (`run_shell`), and remote MCP tool calls (`mcp__<server>__<tool>`) MUST check user permissions via `confirm_tool()`, which respects `$AUTO_MODE` (controlled by `/auto` and `/manual` slash commands or `$ENV{CLAUDE_AUTO_MODE}`) and delegates to interactive `confirm()` when in manual mode. Outputs from remote MCP tools and file/shell executions must remain protected via untrusted output spotlighting (`<untrusted_tool_output>`). Direct user prompts (e.g. saving API keys) must continue using `confirm()`.
+6. **Preserve Strict Tool Pairing During Compaction**: When managing session context and compaction (`compact_session_history`), every `tool_result` block MUST remain paired with its corresponding `tool_use_id` and retain its role in the message sequence. Never produce orphaned tool uses or results.
 
 ---
 

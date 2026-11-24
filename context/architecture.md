@@ -101,6 +101,8 @@ graph TD
   - `get_current_session()`: Lazy accessor ensuring active session availability.
   - `archive_session($session)`: Lifecycle hook invoked immediately before session re-initialization to prepare for future disk persistence and continuation.
   - `handle_new_command($out_fh, $session)`: Command handler for `/new` slash command that archives the current session, re-initializes `$CURRENT_SESSION`, and prints user confirmation.
+  - `compact_session_history()` & `auto_compact_session_if_needed()`: Context and token budgeting subsystem tailored for vintage PowerPC CPUs. Truncates large tool result outputs in older turns (beyond 4 user turns, or exceeding 100k characters / 10 turns) while strictly preserving `tool_use_id` / `tool_result` pair consistency.
+  - `handle_compact_command($out_fh, $session)`: Command handler for `/compact` slash command for on-demand context compaction.
 
 ### 6. Remote Model Context Protocol (MCP) Client Layer
 - **Location**: [`code-agent.pl`](../code-agent.pl), [`src/mcp.pl`](../src/mcp.pl)
