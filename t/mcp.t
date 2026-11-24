@@ -473,7 +473,7 @@ sub read_test_file {
     like($curl_cfg, qr/^url = "http:\/\/127\.0\.0\.1:8000\/mcp"$/m, "URL passed to curl config");
     like($curl_cfg, qr/^request = "POST"$/m, "request = POST set");
     like($curl_cfg, qr/^header = "Content-Type: application\/json"$/m, "Content-Type header set");
-    like($curl_cfg, qr/^header = "Accept: application\/json"$/m, "Accept header set");
+    like($curl_cfg, qr/^header = "Accept: application\/json, text\/event-stream"$/m, "Accept header set");
     unlike($curl_cfg, qr/^cacert = /m, "cacert omitted for http:// URL");
     like($curl_cfg, qr/^dump-header = /m, "dump-header configured");
     like($curl_cfg, qr/^max-time = /m, "max-time configured");
@@ -1575,6 +1575,30 @@ sub read_test_file {
     close $fh;
 
     like($out, qr/MCP:\s*1\/2 servers connected \(2 tools\)/i, "show_banner displays MCP summary when servers configured");
+}
+
+# Test 51: SSE data extraction and parsing
+{
+    my $sse_single = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"status\":\"ok\"}}\n\n";
+    my $extracted = _mcp_extract_sse_data($sse_single);
+    like($extracted, qr/^{\"jsonrpc\"/, "Extracted clean JSON from SSE single event");
+
+    my $parsed = mcp_parse_response($sse_single);
+    is($parsed->{status}, 'ok', "mcp_parse_response parses raw SSE text stream directly");
+
+    my $sse_multi = "event: ping\ndata: 1\n\nevent: message\ndata: {\ndata:   \"jsonrpc\": \"2.0\",\ndata:   \"result\": {\"multiline\": true}\ndata: }\n\n";
+    my $parsed_multi = mcp_parse_response($sse_multi);
+    ok($parsed_multi->{multiline}, "mcp_parse_response parses multi-event, multi-line SSE data");
+
+    my $plain_json = "{\"jsonrpc\":\"2.0\",\"result\":{\"plain\":1}}";
+    is(_mcp_extract_sse_data($plain_json), $plain_json, "_mcp_extract_sse_data leaves plain JSON untouched");
+}
+
+# Test 52: JSON-RPC 2.0 protocol version literal preservation in MiniJSON::encode
+{
+    my $req = { jsonrpc => "2.0", id => 1 };
+    my $encoded = MiniJSON::encode($req);
+    like($encoded, qr/"jsonrpc":"2.0"/, "jsonrpc version is encoded as quoted string literal, not float");
 }
 
 done_testing();

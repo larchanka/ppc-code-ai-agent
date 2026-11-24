@@ -238,6 +238,22 @@ sub mcp_build_tools_call_request {
     return mcp_build_request('tools/call', { name => $tool_name, arguments => $args }, $id);
 }
 
+# Extracts JSON payload from Server-Sent Events (SSE) data stream if present.
+sub _mcp_extract_sse_data {
+    my ($body) = @_;
+    return $body unless defined $body && length $body;
+    return $body unless $body =~ /^(?:data|event):/m;
+
+    my @blocks = split /(?:\r?\n){2,}/, $body;
+    for my $block (reverse @blocks) {
+        my @lines = grep { /^data:/ } split /\r?\n/, $block;
+        next unless @lines;
+        my $data = join("\n", map { (my $d = $_) =~ s/^data:\s?//; $d } @lines);
+        return $data if length $data;
+    }
+    return $body;
+}
+
 # Parses a JSON-RPC 2.0 response (JSON text or HASH ref).
 # Extracts and returns the 'result' member or dies with a descriptive error.
 sub mcp_parse_response {
@@ -248,7 +264,8 @@ sub mcp_parse_response {
     if (ref($resp) eq 'HASH') {
         $data = $resp;
     } elsif (!ref($resp) && length($resp)) {
-        eval { $data = MiniJSON::decode($resp); };
+        my $clean = _mcp_extract_sse_data($resp);
+        eval { $data = MiniJSON::decode($clean); };
         if ($@ || !defined $data || ref($data) ne 'HASH') {
             die "MCP error: Invalid JSON-RPC response\n";
         }
@@ -366,7 +383,7 @@ sub _mcp_prepare_headers {
     }
 
     push @headers, "Content-Type: application/json" unless $seen{'content-type'};
-    push @headers, "Accept: application/json" unless $seen{'accept'};
+    push @headers, "Accept: application/json, text/event-stream" unless $seen{'accept'};
 
     if (defined $server->{session_id} && length $server->{session_id} && !$seen{'mcp-session-id'}) {
         push @headers, "mcp-session-id: $server->{session_id}";
@@ -437,6 +454,14 @@ sub _mcp_format_result {
                 _http_code => $code_num,
                 _success   => 0,
                 _raw       => $resp_body,
+            };
+            $res->{session_id} = $session_id if defined $session_id;
+        } elsif (!defined $resp_body || length($resp_body) == 0) {
+            $res = {
+                jsonrpc    => '2.0',
+                result     => {},
+                _http_code => $code_num,
+                _success   => 1,
             };
             $res->{session_id} = $session_id if defined $session_id;
         } else {
@@ -595,10 +620,11 @@ sub mcp_http_post {
     unlink $tmp_resp if -e $tmp_resp;
     unlink $tmp_hdr if -e $tmp_hdr;
 
-    # Decode JSON body if possible
+    # Decode JSON body if possible (supporting standard JSON and SSE streams)
     my $decoded;
     if (length $resp_body) {
-        eval { $decoded = MiniJSON::decode($resp_body); };
+        my $clean_json = _mcp_extract_sse_data($resp_body);
+        eval { $decoded = MiniJSON::decode($clean_json); };
     }
 
     # Check session_id in payload if not found in headers
