@@ -265,11 +265,40 @@ sub build_request_openai {
     return $req;
 }
 
+sub _merge_consecutive_blocks {
+    my (@blocks) = @_;
+    my @merged;
+    for my $b (@blocks) {
+        if (@merged && ref($b) eq 'HASH' && ref($merged[-1]) eq 'HASH'
+            && defined $b->{type} && defined $merged[-1]{type}
+            && $b->{type} eq $merged[-1]{type}
+            && ($b->{type} eq 'text' || $b->{type} eq 'thinking'))
+        {
+            $merged[-1]{text} = (defined $merged[-1]{text} ? $merged[-1]{text} : '')
+                              . (defined $b->{text} ? $b->{text} : '');
+            $merged[-1]{thought_signature} = $b->{thought_signature}
+                if defined $b->{thought_signature} && !defined $merged[-1]{thought_signature};
+        }
+        else {
+            push @merged, $b;
+        }
+    }
+    return @merged;
+}
+
 sub parse_response {
     my ($resp) = @_;
-    return parse_response_gemini($resp)   if $PROVIDER eq 'gemini';
-    return parse_response_openai($resp)   if $PROVIDER eq 'openai';
-    return parse_response_anthropic($resp);
+    my @blocks;
+    if ($PROVIDER eq 'gemini') {
+        @blocks = parse_response_gemini($resp);
+    }
+    elsif ($PROVIDER eq 'openai') {
+        @blocks = parse_response_openai($resp);
+    }
+    else {
+        @blocks = parse_response_anthropic($resp);
+    }
+    return _merge_consecutive_blocks(@blocks);
 }
 
 sub parse_response_openai {
@@ -326,15 +355,29 @@ sub parse_response_gemini {
         # are flagged with thought: true. We normalize them to thinking blocks
         # so live thinking visuals can report elapsed time without spewing raw drafts.
         if ($part->{thought}) {
-            my $block = { type => 'thinking', text => (defined $part->{text} ? $part->{text} : '') };
-            $block->{thought_signature} = $part->{thoughtSignature} if defined $part->{thoughtSignature};
-            push @blocks, $block;
+            if (@blocks && $blocks[-1]{type} eq 'thinking') {
+                $blocks[-1]{text} .= (defined $part->{text} ? $part->{text} : '');
+                $blocks[-1]{thought_signature} = $part->{thoughtSignature}
+                    if defined $part->{thoughtSignature} && !defined $blocks[-1]{thought_signature};
+            }
+            else {
+                my $block = { type => 'thinking', text => (defined $part->{text} ? $part->{text} : '') };
+                $block->{thought_signature} = $part->{thoughtSignature} if defined $part->{thoughtSignature};
+                push @blocks, $block;
+            }
             next;
         }
         if (defined $part->{text}) {
-            my $block = { type => 'text', text => $part->{text} };
-            $block->{thought_signature} = $part->{thoughtSignature} if defined $part->{thoughtSignature};
-            push @blocks, $block;
+            if (@blocks && $blocks[-1]{type} eq 'text') {
+                $blocks[-1]{text} .= $part->{text};
+                $blocks[-1]{thought_signature} = $part->{thoughtSignature}
+                    if defined $part->{thoughtSignature} && !defined $blocks[-1]{thought_signature};
+            }
+            else {
+                my $block = { type => 'text', text => $part->{text} };
+                $block->{thought_signature} = $part->{thoughtSignature} if defined $part->{thoughtSignature};
+                push @blocks, $block;
+            }
         }
         elsif ($part->{functionCall}) {
             $gemini_call_seq++;

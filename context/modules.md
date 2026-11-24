@@ -77,9 +77,9 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `build_request_gemini($messages_ref, $tools_ref, $system)`: Translates history and tool declarations into Google Gemini `generateContent` format.
 - `_gemini_thinking_config()`: Configures reasoning budget / thinking level for Gemini 3.x models.
 - `build_request_openai($messages_ref, $tools_ref, $system)`: Formats request for OpenAI-compatible chat completions endpoints.
-- `parse_response($response_json)`: Decodes provider response into uniform text or tool-call structures.
+- `parse_response($response_json)`: Decodes provider response into uniform text or tool-call structures, automatically merging consecutive text or thinking blocks into unified continuous content.
 - `parse_response_anthropic($data)`: Extracts text and `tool_use` blocks from Anthropic API responses.
-- `parse_response_gemini($data)`: Extracts text candidates and `functionCall` items from Gemini responses.
+- `parse_response_gemini($data)`: Extracts text candidates and `functionCall` items from Gemini responses, merging consecutive text and thinking parts into continuous blocks.
 - `parse_response_openai($data)`: Extracts messages and `tool_calls` from OpenAI responses.
 
 #### Interactive Terminal Engine & ANSI Helpers

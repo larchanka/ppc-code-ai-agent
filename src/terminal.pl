@@ -5,6 +5,15 @@
 {
     my @HISTORY;
 
+    # High-resolution timer helper: Time::HiRes has been part of Perl core since 5.7.3.
+    # Sub-second precision is required for CPR (cursor position report) timeouts to avoid
+    # integer truncation bugs at second boundaries.
+    my $_has_time_hires = eval { require Time::HiRes; 1 };
+    sub _has_hires_time { return $_has_time_hires ? 1 : 0 }
+    sub _hires_time {
+        return $_has_time_hires ? Time::HiRes::time() : time();
+    }
+
     # For debugging: setting $ENV{CLAUDE_DEBUG_INPUT} to a file path logs raw bytes
     # received by read_line_interactive line by line. Temporary mechanism to inspect
     # what arrives during IME input on physical hardware.
@@ -16,8 +25,8 @@
         # Enter is sent immediately upon IME confirmation or after a delay (different input path).
         # Time::HiRes is in Perl 5.8 core, so no extra dependency.
         my $dt = '';
-        if (eval { require Time::HiRes; 1 }) {
-            my $now = Time::HiRes::time();
+        if (_has_hires_time()) {
+            my $now = _hires_time();
             $dt = defined $_dbg_last_t ? sprintf('+%.3f ', $now - $_dbg_last_t) : '+0.000 ';
             $_dbg_last_t = $now;
         }
@@ -96,12 +105,13 @@
     sub _query_cursor_row {
         my ($pending_ref) = @_;
         print "\x1b[6n";
-        my $deadline = time() + 0.3;
+        my $deadline = _hires_time() + 0.35;
         my @consumed;
 
         my $read_raw = sub {
-            my $remain = $deadline - time();
-            return undef if $remain <= 0;
+            my $remain = $_has_time_hires ? ($deadline - _hires_time()) : 0.15;
+            return undef if $_has_time_hires && $remain <= 0;
+            $remain = 0.05 if $remain <= 0;
             my $rin = '';
             vec($rin, fileno(STDIN), 1) = 1;
             my $nfound = select(my $rout = $rin, undef, undef, $remain);
@@ -152,12 +162,13 @@
     sub _query_cursor_pos {
         my ($pending_ref) = @_;
         print "\x1b[6n";
-        my $deadline = time() + 0.3;
+        my $deadline = _hires_time() + 0.35;
         my @consumed;
 
         my $read_raw = sub {
-            my $remain = $deadline - time();
-            return undef if $remain <= 0;
+            my $remain = $_has_time_hires ? ($deadline - _hires_time()) : 0.15;
+            return undef if $_has_time_hires && $remain <= 0;
+            $remain = 0.05 if $remain <= 0;
             my $rin = '';
             vec($rin, fileno(STDIN), 1) = 1;
             my $nfound = select(my $rout = $rin, undef, undef, $remain);

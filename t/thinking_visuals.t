@@ -313,4 +313,67 @@ our ($COLOR_DIM, $COLOR_RESET);
     is($out_nontty, "", "cursor_hide/show emits nothing when not a TTY");
 }
 
+# Gemini with fragmented text parts (split across parts)
+{
+    my $resp = {
+        candidates => [
+            {
+                content => {
+                    parts => [
+                        { text => 'Employs patched Firefox and Web' },
+                        { text => 'Kit builds alongside standard Chromium.' },
+                    ],
+                },
+            },
+        ],
+    };
+    local $ENV{GEMINI_API_KEY} = 'test-gem-key';
+    configure_provider('gemini');
+    my @blocks = parse_response($resp);
+    is(scalar(@blocks), 1, 'Gemini fragmented text: merged into 1 block');
+    is($blocks[0]{type}, 'text', 'Gemini fragmented text: type is text');
+    is($blocks[0]{text}, 'Employs patched Firefox and WebKit builds alongside standard Chromium.',
+       'Gemini fragmented text: text correctly joined');
+}
+
+# Gemini with fragmented thinking parts
+{
+    my $resp = {
+        candidates => [
+            {
+                content => {
+                    parts => [
+                        { thought => 1, text => 'Thinking part 1. ' },
+                        { thought => 1, text => 'Thinking part 2.' },
+                        { text => 'Final answer' },
+                    ],
+                },
+            },
+        ],
+    };
+    local $ENV{GEMINI_API_KEY} = 'test-gem-key';
+    configure_provider('gemini');
+    my @blocks = parse_response($resp);
+    is(scalar(@blocks), 2, 'Gemini fragmented thinking: merged thinking into 1 block');
+    is($blocks[0]{type}, 'thinking', 'Block 0 is thinking');
+    is($blocks[0]{text}, 'Thinking part 1. Thinking part 2.', 'Thinking parts joined');
+    is($blocks[1]{type}, 'text', 'Block 1 is text');
+    is($blocks[1]{text}, 'Final answer', 'Final answer is text');
+}
+
+# Anthropic / generic consecutive text blocks
+{
+    my $resp = {
+        content => [
+            { type => 'text', text => 'Hello ' },
+            { type => 'text', text => 'World!' },
+        ],
+    };
+    local $ENV{ANTHROPIC_API_KEY} = 'test-ant-key';
+    configure_provider('anthropic');
+    my @blocks = parse_response($resp);
+    is(scalar(@blocks), 1, 'Anthropic consecutive text: merged into 1 block');
+    is($blocks[0]{text}, 'Hello World!', 'Anthropic consecutive text: text joined');
+}
+
 done_testing();
