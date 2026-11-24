@@ -14,6 +14,7 @@ my @MODULES = (
     'src/models_menu.pl',
     'src/session.pl',
     'src/tools.pl',
+    'src/mcp.pl',
     'src/terminal.pl',
     'src/markdown.pl',
     'src/ui.pl',

@@ -21,8 +21,9 @@ open my $lf, '>', $log_path or die "Cannot write $log_path: $!";
 print $lf $config_content;
 close $lf;
 
-my ($output_path) = $config_content =~ /^output\s*=\s*"([^"]+)"/m;
-my ($req_path)    = $config_content =~ /^data-binary\s*=\s*"\@([^"]+)"/m;
+my ($output_path)   = $config_content =~ /^output\s*=\s*"([^"]+)"/m;
+my ($req_path)      = $config_content =~ /^data-binary\s*=\s*"\@([^"]+)"/m;
+my ($dump_hdr_path) = $config_content =~ /^dump-header\s*=\s*"([^"]+)"/m;
 
 # Check if request tempfile exists in /tmp
 my $req_status_path = $ENV{MOCK_CURL_REQ_CHECK} || '/tmp/mock_curl_req.log';
@@ -58,6 +59,13 @@ if (defined $ENV{MOCK_CURL_COUNT_FILE} && length $ENV{MOCK_CURL_COUNT_FILE}) {
     open(my $wfh, '>', $cf) or die "Cannot write $cf: $!";
     print $wfh ($attempt_idx + 1) . "\n";
     close $wfh;
+}
+
+if ($dump_hdr_path) {
+    open my $dhf, '>', $dump_hdr_path or die "Cannot write $dump_hdr_path: $!";
+    my $mock_hdr = $ENV{MOCK_CURL_HEADERS} || "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
+    print $dhf $mock_hdr;
+    close $dhf;
 }
 
 if ($output_path) {

@@ -28,6 +28,8 @@ unless (caller) {
 
 get_current_session();
 
+mcp_init_all();
+
 show_banner();
 
 while (1) {
@@ -64,6 +66,11 @@ while (1) {
 
     if ($input =~ m{^/(?:ctx|context)(?:\s+(.*))?$}) {
         handle_ctx_command($1);
+        next;
+    }
+
+    if ($input =~ m{^/mcp(?:\s+(.*))?$}) {
+        handle_mcp_command($1);
         next;
     }
 
@@ -160,14 +167,17 @@ while (1) {
         push @{$session->{messages}}, { role => 'assistant', content => \@content_blocks };
 
         my @tool_results;
+        my $printed_code_ai_prompt = 0;
         for my $block (@content_blocks) {
             if ($block->{type} eq 'text') {
-                print "\n${COLOR_MODEL}Code AI>${COLOR_RESET} ";
+                print "\n${COLOR_MODEL}Code AI>${COLOR_RESET} " unless $printed_code_ai_prompt;
+                $printed_code_ai_prompt = 1;
                 my $rendered = render_markdown($block->{text});
                 slow_print("$rendered\n");
                 print $COLOR_RESET;
             }
             elsif ($block->{type} eq 'tool_use') {
+                $printed_code_ai_prompt = 0;
                 print "\n" . format_tool_call($block->{name}, $block->{input}) . "\n";
                 my $result = run_tool($block->{name}, $block->{input});
                 push @tool_results, {

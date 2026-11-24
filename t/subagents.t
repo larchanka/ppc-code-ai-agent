@@ -59,15 +59,20 @@ my $summary_build = format_tool_summary('invoke_subagent', { task => 'Fix format
 like($summary_build, qr/invoke_subagent\s+\[build\]\s+Fix formatting/, "format_tool_summary defaults to [build]");
 
 # format_subagent_start / finish / tool_call
-my $tree_start = format_subagent_start('plan', 'Inspect structure');
-like($tree_start, qr/┌── \[Sub-agent: plan\]/, "format_subagent_start includes tree header");
-like($tree_start, qr/Inspect structure/, "format_subagent_start includes task text");
+{
+    local $COLOR_SUBAGENT = '';
+    local $COLOR_DIM = '';
+    local $COLOR_RESET = '';
+    my $tree_start = format_subagent_start('plan', 'Inspect structure');
+    like($tree_start, qr/┌── \[Sub-agent: plan\]/, "format_subagent_start includes tree header");
+    like($tree_start, qr/Inspect structure/, "format_subagent_start includes task text");
 
-my $tree_call = format_subagent_tool_call('plan', 1, 50, 'read_file', { path => 'foo.txt' });
-like($tree_call, qr/│.*\[Turn 1\/50\]\s+read_file\s+foo\.txt/, "format_subagent_tool_call formats turn and tool");
+    my $tree_call = format_subagent_tool_call('plan', 1, 50, 'read_file', { path => 'foo.txt' });
+    like($tree_call, qr/│.*\[Turn 1\/50\]\s+read_file\s+foo\.txt/, "format_subagent_tool_call formats turn and tool");
 
-my $tree_finish = format_subagent_finish('plan', 3, 'Completed');
-like($tree_finish, qr/└── \[Sub-agent: plan\]\s+Completed in 3 turn\(s\)/, "format_subagent_finish includes turn count");
+    my $tree_finish = format_subagent_finish('plan', 3, 'Completed');
+    like($tree_finish, qr/└── \[Sub-agent: plan\]\s+Completed in 3 turn\(s\)/, "format_subagent_finish includes turn count");
+}
 
 # ==================================================================
 # 4. Confirmation Tagging under Sub-Agents
@@ -294,6 +299,50 @@ close $tf;
     like($SUBAGENT_BUILD_PROMPT, qr/<file_editing>.*<\/file_editing>/s, "SUBAGENT_BUILD_PROMPT includes shared <file_editing> section");
     like($SUBAGENT_BUILD_PROMPT, qr/<tiger_env>.*<\/tiger_env>/s, "SUBAGENT_BUILD_PROMPT includes shared <tiger_env> section");
     like($SUBAGENT_PLAN_PROMPT, qr/<turn_economy>.*<\/turn_economy>/s, "SUBAGENT_PLAN_PROMPT includes <turn_economy> section");
+}
+
+# ==================================================================
+# 8. MCP Tools in Sub-Agents (plan excludes, build includes)
+# ==================================================================
+{
+    my $mcp_tool_def = {
+        name         => 'mcp__git__status',
+        description  => 'Show git status via MCP',
+        server       => 'git',
+        input_schema => { type => 'object', properties => {} },
+    };
+    push @TOOLS, $mcp_tool_def;
+
+    my $plan_tools_with_mcp = get_subagent_tools('plan');
+    my @plan_tool_names = sort map { $_->{name} } @$plan_tools_with_mcp;
+    is_deeply(\@plan_tool_names, ['list_dir', 'read_file'],
+        "plan sub-agent strictly excludes remote MCP tools");
+
+    my $build_tools_with_mcp = get_subagent_tools('build');
+    my @build_tool_names = sort map { $_->{name} } @$build_tools_with_mcp;
+    ok(grep({ $_ eq 'mcp__git__status' } @build_tool_names),
+        "build sub-agent includes registered remote MCP tools");
+    ok(!grep({ $_ eq 'invoke_subagent' } @build_tool_names),
+        "build sub-agent still excludes invoke_subagent");
+
+    # Subagent confirmation with MCP tool
+    my $captured_prompt = '';
+    no warnings 'once', 'redefine';
+    local *confirm = sub {
+        ($captured_prompt) = @_;
+        return 1;
+    };
+    use warnings 'once', 'redefine';
+
+    $AUTO_MODE = 0;
+    $CURRENT_SUBAGENT_TYPE = 'build';
+    confirm_tool("Call remote MCP tool 'mcp__git__status'?");
+    is($captured_prompt, "[Sub-agent: build] Call remote MCP tool 'mcp__git__status'?",
+        "Subagent confirmation prefix correctly applied to MCP tool confirmation");
+    $CURRENT_SUBAGENT_TYPE = undef;
+
+    # Clean up test tool from @TOOLS
+    @TOOLS = grep { $_->{name} ne 'mcp__git__status' } @TOOLS;
 }
 
 done_testing();

@@ -72,7 +72,7 @@ Copy this repository folder to your PowerPC Mac using a USB drive, local network
 Follow the prompts to:
 1. Select your preferred provider (**Anthropic Claude** or **Google Gemini**).
    > **Tip**: Google Gemini has a free tier with no credit card required at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-2. Enter your API key (stored securely in `~/.code-agent-env`).
+2. Enter your API key (stored securely in `~/.code-agent/env`).
 3. Deploy the CLI wrapper to `~/bin/code` (or `~/bin/code-agent` if VS Code is detected).
 
 ### 3. Start Chatting
@@ -272,26 +272,30 @@ If you prefer to run private models without internet access, you can run [Ollama
 
 ---
 
-## ⚙️ Configuration & Environment (`~/.code-agent-env`)
+## ⚙️ Configuration & Environment (`~/.code-agent/`)
 
-`code-agent` uses a dedicated environment file located at `~/.code-agent-env` to store provider selection, API keys, and runtime preferences.
+`code-agent` stores configuration, runtime files, and remote MCP settings in a dedicated directory located at `~/.code-agent/`:
+- `~/.code-agent/env`: Provider selection, API keys, and runtime preferences.
+- `~/.code-agent/mcp.json`: Remote MCP server configurations.
+- `~/.code-agent/build/`: Installed agent script (`code-agent.pl`) and CA bundle (`src/cacert.pem`).
+- `~/.code-agent/toolchain/`: Prebuilt TLS 1.2/1.3 curl binary (`bin/curl`, on PowerPC Tiger).
 
 ### How It Works
 
-* **Automatic Loading**: The CLI launchers (`~/bin/code` and `~/bin/code-agent`) source this file before running Perl. In addition, `code-agent.pl` parses it on startup via `load_env_file()`, so credentials load even if you run `perl code-agent.pl` directly.
-* **Security**: The installer sets file permissions to `0600` (`chmod 600 ~/.code-agent-env`), ensuring only your user account can read or write API keys.
-* **Precedence**: Environment variables already defined in your current shell session take precedence over values in `~/.code-agent-env`. You can temporarily override any setting on the command line:
+* **Automatic Loading**: The CLI launchers (`~/bin/code` and `~/bin/code-agent`) source `~/.code-agent/env` before running Perl. In addition, `code-agent.pl` parses it on startup via `load_env_file()`, so credentials load even if you run `perl code-agent.pl` directly.
+* **Security**: The installer sets directory permissions to `0700` and file permissions to `0600`, ensuring only your user account can read or write API keys and configuration.
+* **Precedence**: Environment variables already defined in your current shell session take precedence over values in `~/.code-agent/env`. You can temporarily override any setting on the command line:
   ```bash
   CLAUDE_PROVIDER=anthropic code
   ```
-* **Backward Compatibility**: If `~/.code-agent-env` is missing, the agent automatically checks for and loads the legacy `~/.claude-agent-env` file.
+* **Migration**: During installation, any legacy `~/.code-agent-env` or `~/.claude-agent-env` file is automatically migrated into `~/.code-agent/env`.
 
 ### Example File
 
 Lines can use standard shell assignment (`export KEY="VALUE"` or `KEY=VALUE`). Blank lines and comments (`#`) are ignored:
 
 ```bash
-# ~/.code-agent-env - Code Agent Configuration
+# ~/.code-agent/env - Code Agent Configuration
 
 # Default provider: "gemini", "anthropic", or "openai"
 export CLAUDE_PROVIDER="gemini"
@@ -340,13 +344,13 @@ export GEMINI_API_KEY="AIzaSy..."
 
 ### Managing Your Credentials
 
-* **To edit credentials**: Open `~/.code-agent-env` in any text editor:
+* **To edit credentials**: Open `~/.code-agent/env` in any text editor:
   ```bash
-  nano ~/.code-agent-env
+  nano ~/.code-agent/env
   ```
-* **To re-run the setup wizard**: Delete the file and execute the installer:
+* **To re-run the setup wizard**: Delete the configuration and execute the installer:
   ```bash
-  rm ~/.code-agent-env
+  rm -rf ~/.code-agent
   ./Install.command          # On PowerPC Tiger
   # or ./modern-install.command  # On modern macOS / Linux
   ```

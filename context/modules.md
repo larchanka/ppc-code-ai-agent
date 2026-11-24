@@ -28,11 +28,11 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 
 #### Provider Management & Setup
 - `configure_provider($provider)`: Configures `$API_KEY`, `$MODEL`, `$API_URL`, and `$ANTHROPIC_VERSION` for `anthropic`, `gemini`, or `openai`.
-- `get_env_file_path()`: Resolves the environment file path, preferring `~/.code-agent-env` with fallback to `~/.claude-agent-env`.
+- `get_env_file_path()`: Resolves the environment file path (`~/.code-agent/env`).
 - `load_env_file([$file])`: Loads environment variables from the environment file if not already set in `%ENV`.
 - `gemini_key_setup()`: Interactive CLI wizard guiding users through setting up a free Google AI Studio key.
 - `_validate_gemini_key($key)`: Performs a lightweight test query to verify validity.
-- `_maybe_save_gemini_key($key)`: Prompts the user to save credentials to `~/.code-agent-env`.
+- `_maybe_save_gemini_key($key)`: Prompts the user to save credentials to `~/.code-agent/env`.
 - `read_secret_or_cancel($prompt)`: Prompts for sensitive input with echo disabled, supporting cancel via Escape or Ctrl+C.
 - `get_current_model()`: Returns active `$MODEL`.
 - `get_current_provider()`: Returns active `$PROVIDER`.
@@ -77,9 +77,9 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `build_request_gemini($messages_ref, $tools_ref, $system)`: Translates history and tool declarations into Google Gemini `generateContent` format.
 - `_gemini_thinking_config()`: Configures reasoning budget / thinking level for Gemini 3.x models.
 - `build_request_openai($messages_ref, $tools_ref, $system)`: Formats request for OpenAI-compatible chat completions endpoints.
-- `parse_response($response_json)`: Decodes provider response into uniform text or tool-call structures.
+- `parse_response($response_json)`: Decodes provider response into uniform text or tool-call structures, automatically merging consecutive text or thinking blocks into unified continuous content.
 - `parse_response_anthropic($data)`: Extracts text and `tool_use` blocks from Anthropic API responses.
-- `parse_response_gemini($data)`: Extracts text candidates and `functionCall` items from Gemini responses.
+- `parse_response_gemini($data)`: Extracts text candidates and `functionCall` items from Gemini responses, merging consecutive text and thinking parts into continuous blocks.
 - `parse_response_openai($data)`: Extracts messages and `tool_calls` from OpenAI responses.
 
 #### Interactive Terminal Engine & ANSI Helpers
@@ -125,6 +125,29 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `get_subagent_tools($type)`: Returns filtered tool list for sub-agents (`plan`: strictly read-only `read_file` and `list_dir`; `build`: full tools excluding recursive `invoke_subagent`).
 - `run_subagent($task, $subagent_type)`: Executes synchronous turn-based sub-agent loop up to 50 turns with isolated conversation session, turn countdown context injection, and visual tree formatting.
 
+#### Remote Model Context Protocol (MCP) Client (`src/mcp.pl`)
+- `get_mcp_config_path()`: Discovers configuration file path checking `CLAUDE_MCP_CONFIG`, `./mcp_servers.json`, and `~/.code-agent/mcp.json`.
+- `parse_mcp_config($json_text)`: Parses JSON string containing server definitions in `{ "mcpServers": { ... } }` or flat `{ "server": { ... } }` format into normalized server descriptors.
+- `load_mcp_config([$file])`: Reads and parses server definitions from discovered or explicit config path, merging with inline servers from `CLAUDE_MCP_SERVERS`.
+- `save_mcp_config([$file])`: Serializes current `%MCP_SERVERS` definitions into `{"mcpServers": {...}}` JSON and writes to `~/.code-agent/mcp.json` (or explicit path) with `0600` permissions.
+- `mcp_build_request($method, $params, $id)`: Constructs standard JSON-RPC 2.0 request payload.
+- `mcp_build_notification($method, $params)`: Constructs standard JSON-RPC 2.0 notification payload (omitting `id`).
+- `mcp_build_init_request()`: Builds MCP `initialize` request with client capabilities and protocol version (`2024-11-05`).
+- `mcp_build_init_notification()`: Builds MCP `notifications/initialized` notification payload.
+- `mcp_build_tools_list_request()`: Builds MCP `tools/list` request payload.
+- `mcp_build_tools_call_request($tool_name, $arguments)`: Builds MCP `tools/call` request payload.
+- `mcp_parse_response($resp_json_or_hash)`: Parses JSON-RPC response, extracting `result` payload or throwing formatted error on `error` payload.
+- `mcp_normalize_tool_schema($tool_def)`: Normalizes MCP tool definitions, mapping `inputSchema` to `input_schema` for provider compatibility.
+- `mcp_normalize_tool($server_name, $tool_def)`: Namespaces tool names as `mcp__<server>__<tool>` and populates metadata for registration.
+- `mcp_http_post($server_info, $payload_hash)`: Executes secure HTTP POST via curl config files (`-K`, `0600` permissions) with custom headers, `mcp-session-id` tracking, and 20s timeout.
+- `mcp_connect_server($name)`: Executes MCP handshake (`initialize` -> `notifications/initialized` -> `tools/list`) and dynamically registers tools into `%MCP_TOOLS` and `@TOOLS`.
+- `mcp_disconnect_server($name)`: Disconnects server and purges its tools from `@TOOLS` and `%MCP_TOOLS`.
+- `mcp_unregister_server_tools($name)`: Removes tools belonging to `$name` from `@TOOLS`.
+- `mcp_execute_tool($tool_name, $arguments)`: Dispatches tool call to remote server over JSON-RPC `tools/call`, handles errors, and returns formatted result string.
+- `mcp_format_call_result($result)`: Extracts and joins `text` blocks from tool call response content array.
+- `mcp_init_all()`: Discovers and initiates connections to all configured servers at agent startup.
+- `handle_mcp_command($in_fh, $out_fh, $args)`: Subcommand dispatcher for `/mcp` (`list`, `add`, `remove`, `refresh`).
+
 #### Prompts & Context Loading (`src/prompts.pl`)
 - `$SYSTEM_PROMPT`: Default system prompt for the primary agent loop.
 - `$SUBAGENT_PLAN_PROMPT`: Default prompt for the read-only planning sub-agent.
@@ -142,7 +165,7 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 ## 2. Module: `build.pl`
 
 ### Overview
-A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 12 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
+A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 13 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
 
 ### Command Line Interface
 - `perl build.pl`: Concatenates `src/*.pl` in manifest order, writes `code-agent.pl`, and verifies syntax.
@@ -151,17 +174,19 @@ A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN depe
 - `perl build.pl --output <file>`: Sets custom output file.
 
 ### Ordered Assembly Manifest
-1. `src/header.pl`: Pragmas, UTF-8 binmode, constants, colors, cursor helpers, env helpers, globals, `configure_provider`, `$SYSTEM_PROMPT`.
-2. `src/json.pl`: Pure-Perl JSON parser and encoder (`MiniJSON`).
-3. `src/transport.pl`: Curl invocation (`call_api`) and shell quotation (`quote`).
-4. `src/providers.pl`: Provider-specific header/request builders, response parsers, model discovery.
-5. `src/models_menu.pl`: Interactive curses-like terminal model selector.
-6. `src/session.pl`: Session management, state accessors, slash command handlers.
-7. `src/tools.pl`: Tool definitions (`@TOOLS`), confirmation helpers, Gemini setup helpers, `run_tool` dispatcher.
-8. `src/terminal.pl`: Pure-Perl interactive readline engine with history and ANSI cursor positioning.
-9. `src/markdown.pl`: Pure-Perl Markdown renderer for Mac OS X 10.4 Tiger terminal and standalone preview utility.
-10. `src/ui.pl`: Formatting helpers for tool summaries, tool calls, thinking status, and ANSI-aware `slow_print`.
-11. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
+1. `src/header.pl`: Pragmas, UTF-8 binmode, constants, colors, cursor helpers, env helpers, globals, `configure_provider`.
+2. `src/prompts.pl`: System prompts (`$SYSTEM_PROMPT`), sub-agent instructions (`$SUBAGENT_PLAN_PROMPT`, `$SUBAGENT_BUILD_PROMPT`), AGENTS.md discovery and prompt composition helpers.
+3. `src/json.pl`: Pure-Perl JSON parser and encoder (`MiniJSON`).
+4. `src/transport.pl`: Curl invocation (`call_api`) and shell quotation (`quote`).
+5. `src/providers.pl`: Provider-specific header/request builders, response parsers, model discovery.
+6. `src/models_menu.pl`: Interactive curses-like terminal model selector.
+7. `src/session.pl`: Session management, state accessors, slash command handlers.
+8. `src/tools.pl`: Tool definitions (`@TOOLS`), confirmation helpers, Gemini setup helpers, `run_tool` dispatcher.
+9. `src/mcp.pl`: Remote Model Context Protocol (MCP) client, JSON-RPC protocol, tool registration, `/mcp` command.
+10. `src/terminal.pl`: Pure-Perl interactive readline engine with history and ANSI cursor positioning.
+11. `src/markdown.pl`: Pure-Perl Markdown renderer for Mac OS X 10.4 Tiger terminal and standalone preview utility.
+12. `src/ui.pl`: Formatting helpers for tool summaries, tool calls, thinking status, and ANSI-aware `slow_print`.
+13. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
 
 ---
 
@@ -171,12 +196,12 @@ A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN depe
 A standalone Bash script providing one-click installation on Mac OS X 10.4 Tiger.
 
 ### Key Operations
-1. **Toolchain Installation**: Copies `curl` to `$HOME/code-toolchain/bin/curl` and sets executable permissions.
+1. **Toolchain Installation**: Copies `curl` to `$HOME/.code-agent/toolchain/bin/curl` and sets executable permissions. Cleans up old standalone directories (`code-toolchain`, `code-build`) if present.
 2. **Build from Source**: Automatically executes `perl build.pl` if `build.pl` and `src/` are present before copying to the build directory.
-3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/code-build/`.
+3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/.code-agent/build/`.
 4. **Curl Verification**: Executes `curl --version` to verify PowerPC CPU and kernel compatibility.
-5. **Interactive Provider Selection**: Guides user to choose Anthropic or Gemini, prompts for API key without echo, and writes `~/.code-agent-env` with permissions `0600`.
-6. **Launcher Wrapper**: Generates `$HOME/bin/code`, which sources the environment and launches `code-agent.pl`.
+5. **Interactive Provider Selection**: Guides user to choose Anthropic or Gemini, prompts for API key without echo, migrates legacy configuration if present, and writes `~/.code-agent/env` with permissions `0600`.
+6. **Launcher Wrapper**: Generates `$HOME/bin/code`, which sources `~/.code-agent/env` and launches `$HOME/.code-agent/build/code-agent.pl`.
 7. **Path Configuration**: Updates `$HOME/.bash_profile` with `$HOME/bin` if not already present.
 8. **End-to-End Connectivity Verification**: Makes a test HTTP request to verify API keys and network connectivity before concluding setup.
 
@@ -190,9 +215,9 @@ A Bash installation script tailored for modern macOS (Intel and Apple Silicon) a
 ### Key Operations
 1. **Host Environment Checks**: Verifies availability of system `perl` and TLS-capable `curl`.
 2. **Build from Source**: Executes `perl build.pl` if `build.pl` and `src/` are present.
-3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/code-build/`.
-4. **Interactive Provider Selection**: Configures Anthropic or Gemini keys securely in `~/.code-agent-env` (`0600` permissions).
-5. **Launcher Wrappers**: Generates `$HOME/bin/code-agent` and symlinks `$HOME/bin/code` (checking for conflicts with VS Code).
+3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/.code-agent/build/`. Cleans up old standalone directories (`code-toolchain`, `code-build`) if present.
+4. **Interactive Provider Selection**: Configures Anthropic or Gemini keys securely in `~/.code-agent/env` (`0600` permissions), migrating legacy files if present.
+5. **Launcher Wrappers**: Generates `$HOME/bin/code-agent` (pointing to `$HOME/.code-agent/build/code-agent.pl`) and symlinks `$HOME/bin/code` (checking for conflicts with VS Code).
 6. **Shell Profile Configuration**: Updates `~/.zshrc`, `~/.bashrc`, and/or `~/.bash_profile` based on active shell and OS platform.
 7. **End-to-End Connectivity Verification**: Verifies API keys against Anthropic or Google Gemini endpoints.
 

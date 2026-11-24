@@ -5,6 +5,7 @@ code-agent.pl
 .context_cache/
 
 # Local configuration and credentials
+.code-agent/
 .code-agent-env
 .claude-agent-env
 

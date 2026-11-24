@@ -237,7 +237,7 @@ sub _validate_gemini_key {
     return ('bad_key', "HTTP $http");
 }
 
-# Prompt whether to save key to ~/.code-agent-env; if confirmed,
+# Prompt whether to save key to ~/.code-agent/env; if confirmed,
 # strip existing GEMINI_API_KEY line and append new one.
 sub _maybe_save_gemini_key {
     my ($key) = @_;
@@ -246,6 +246,12 @@ sub _maybe_save_gemini_key {
     my $a = read_line_interactive('', 0);
     return unless defined $a;
     return if $a =~ /^\s*n/i;
+
+    (my $dir = $target_file) =~ s{/[^/]+$}{};
+    if (length $dir && !-d $dir) {
+        mkdir $dir, 0700;
+        chmod 0700, $dir;
+    }
 
     my @keep;
     if (open(my $rf, '<', $target_file)) {
@@ -314,7 +320,7 @@ sub read_secret_or_cancel {
     return $cancelled ? undef : $buf;
 }
 
-my %UNTRUSTED_OUTPUT_TOOLS = (
+%UNTRUSTED_OUTPUT_TOOLS = (
     read_file       => 1,
     list_dir        => 1,
     run_shell       => 1,
@@ -324,7 +330,7 @@ my %UNTRUSTED_OUTPUT_TOOLS = (
 sub format_tool_result {
     my ($name, $result) = @_;
     $result = '' unless defined $result;
-    return $result unless defined $name && $UNTRUSTED_OUTPUT_TOOLS{$name};
+    return $result unless defined $name && ($UNTRUSTED_OUTPUT_TOOLS{$name} || exists $MCP_TOOLS{$name} || $name =~ /^mcp__/);
 
     my $sanitized = $result;
     $sanitized =~ s{<(/(?i:untrusted_tool_output)\b)}{<\\$1}g;
@@ -440,6 +446,9 @@ sub run_tool {
         return "Error: missing required 'task' parameter" unless defined $task && length $task;
         my $subagent_type = defined $input->{subagent_type} ? $input->{subagent_type} : 'build';
         return run_subagent($task, $subagent_type);
+    }
+    elsif (exists $MCP_TOOLS{$name} || $name =~ /^mcp__/) {
+        return mcp_execute_tool($name, $input);
     }
     else {
         return "Unknown tool: $name";

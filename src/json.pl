@@ -1,6 +1,8 @@
 # --- Minimal JSON encoder/decoder (zero dependencies, recursive descent) ---
 package MiniJSON;
 
+use B ();
+
 sub encode {
     my ($v) = @_;
     my $r = ref $v;
@@ -14,10 +16,19 @@ sub encode {
         return 'null';
     } elsif ($r eq 'SCALAR') {
         return $$v ? 'true' : 'false';
-    } elsif ($v =~ /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/) {
-        return $v;
     } else {
-        return encode_string($v);
+        my $flags = B::svref_2object(\$v)->FLAGS;
+        if (($flags & (B::SVf_IOK | B::SVf_NOK)) && !($flags & B::SVf_POK)) {
+            return $v;
+        } elsif ($flags & B::SVf_POK) {
+            return encode_string($v);
+        } elsif ($flags & (B::SVf_IOK | B::SVf_NOK)) {
+            return $v;
+        } elsif ($v =~ /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/) {
+            return $v;
+        } else {
+            return encode_string($v);
+        }
     }
 }
 

@@ -230,6 +230,15 @@ sub show_banner {
     my $mode_str = (defined $auto && $auto) ? 'auto' : 'manual';
 
     print $out_fh " [$prov / $mod$where]  mode: $mode_str\n";
+    if (keys %MCP_SERVERS) {
+        my $connected = 0;
+        for my $s (values %MCP_SERVERS) {
+            $connected++ if defined $s->{status} && $s->{status} eq 'connected';
+        }
+        my $total = scalar(keys %MCP_SERVERS);
+        my $tools_count = scalar(keys %MCP_TOOLS);
+        print $out_fh " MCP: $connected/$total servers connected ($tools_count tools)\n";
+    }
     print $out_fh " Type /help for commands, /models to switch model.\n";
 }
 

@@ -38,6 +38,7 @@ graph TD
         ToolConfirm -->|Approved / Auto| TF3["edit_file"]
         ToolConfirm -->|Approved / Auto| TF4["list_dir"]
         ToolConfirm -->|Approved / Auto| TF5["run_shell"]
+        ToolConfirm -->|Approved / Auto| TF6["mcp__&lt;server&gt;__&lt;tool&gt;"]
     end
     
     TF1 --> Loop
@@ -45,6 +46,7 @@ graph TD
     TF3 --> Loop
     TF4 --> Loop
     TF5 --> Loop
+    TF6 --> Loop
 ```
 
 ## Subsystems & Layers
@@ -62,7 +64,7 @@ graph TD
 - **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 52–106, 134–270, 345–640)
 - **Responsibilities**:
   - `MiniJSON`: Zero-dependency recursive descent JSON parser and serializer.
-  - Environment & credential management: `load_env_file()` loads `~/.code-agent-env` (with fallback to `~/.claude-agent-env`) without overriding existing `%ENV` variables.
+  - Environment & credential management: `load_env_file()` loads `~/.code-agent/env` without overriding existing `%ENV` variables. Legacy `~/.code-agent-env` and `~/.claude-agent-env` files are migrated on installation.
   - Provider configurations for **Anthropic** (`claude-sonnet-4-5-20250929`), **Gemini** (`gemini-3.5-flash-lite`), and **OpenAI-compatible** local endpoints (e.g. Ollama, llama.cpp on LAN).
   - Runtime provider switching via slash commands (`/claude`, `/gemini`, `/openai`).
   - Request schema translation between Anthropic's messages/tools format, Gemini's contents/functionDeclarations, and OpenAI's chat/completions format.
@@ -70,26 +72,28 @@ graph TD
 ### 3. Network Transport Layer
 - **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 272–344), [`curl`](../curl), [`cacert.pem`](../cacert.pem)
 - **Responsibilities**:
-  - Execution of `$CLAUDE_CURL` (`/usr/local/code-toolchain/bin/curl` or bundled `./curl`).
+  - Execution of `$CLAUDE_CURL` (`~/.code-agent/toolchain/bin/curl`, `/usr/local/code-toolchain/bin/curl`, or bundled `./curl`).
   - Strict certificate verification using bundled Mozilla `cacert.pem`.
   - Payload streaming and response capture via temporary files or pipes.
   - Automatic retry mechanism (`call_api` wrapping `_call_api_once`) that retries failed or transient HTTP/JSON/provider API calls up to 3 times (`CLAUDE_MAX_RETRIES`, default `3`) with a 5-second interval (`CLAUDE_RETRY_DELAY`, default `5`).
 
 ### 4. Autonomous Tool Execution & Safety Layer
-- **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 57–60, 1046–1095, 1164–1172, 2040–2080)
+- **Location**: [`code-agent.pl`](../code-agent.pl), [`src/tools.pl`](../src/tools.pl)
 - **Responsibilities**:
   - `read_file`: Reads file content in UTF-8, with optional 1-based inclusive `start_line` and `end_line` line slicing and bounds clamping.
   - `write_file`: Overwrites whole file content on local disk with permission checked via `confirm_tool()`.
   - `edit_file`: Replaces a specific line range (`start_line` through `end_line`, 1-based inclusive) with replacement content, deletes lines when content is empty, or inserts lines without deletion (`end_line = start_line - 1`), with bounds clamping and permission checked via `confirm_tool()`.
   - `list_dir`: Scans directory entries excluding `.` and `..`.
   - `run_shell`: Executes arbitrary shell commands via system backticks with permission checked via `confirm_tool()`.
-  - `invoke_subagent`: Delegates specialized tasks to an isolated sub-agent loop (up to 50 turns) with turn countdown tracking, supporting `plan` (strictly read-only `read_file` and `list_dir`) and `build` (full implementation tools).
+  - `invoke_subagent`: Delegates specialized tasks to an isolated sub-agent loop (up to 50 turns) with turn countdown tracking, supporting `plan` (strictly read-only `read_file` and `list_dir`) and `build` (full implementation tools, including remote MCP tools).
+  - Remote MCP Tools: Dispatched through `mcp_execute_tool()` when tool name matches remote registry, prompting `confirm_tool("Call remote MCP tool '$tool_name'?")` in manual mode and executing immediately in auto mode.
+  - Prompt Injection Defense: `format_tool_result()` encloses outputs from untrusted-data tools (`read_file`, `list_dir`, `run_shell`, `invoke_subagent`, and all remote MCP tools) in `<untrusted_tool_output tool="$name">...</untrusted_tool_output>` fences after escaping closing tags.
   - `confirm_tool($prompt)`: Permission wrapper that returns `1` immediately when `$AUTO_MODE` is active; delegates to interactive `confirm($prompt)` when manual mode is active (prefixed with `[Sub-agent: $type]` when invoked under a sub-agent).
   - `handle_auto_command($out_fh)` & `handle_manual_command($out_fh)`: Slash command handlers (`/auto`, `/manual`) toggling `$AUTO_MODE`.
   - `get_auto_mode()` & `set_auto_mode($val)`: Encapsulated accessors for `$AUTO_MODE`.
 
 ### 5. Session Management & Lifecycle Layer
-- **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 1087–1132, 2244–2247)
+- **Location**: [`code-agent.pl`](../code-agent.pl), [`src/session.pl`](../src/session.pl)
 - **Responsibilities**:
   - `$CURRENT_SESSION`: Package-level session state holding `id`, `created_at`, `provider`, `model`, and `messages` arrayref.
   - `generate_session_id()`: Generates unique timestamped session IDs (`session-YYYYMMDD-HHMMSS-NNN`) combining `localtime` and monotonic `$SESSION_COUNTER`.
@@ -98,10 +102,18 @@ graph TD
   - `archive_session($session)`: Lifecycle hook invoked immediately before session re-initialization to prepare for future disk persistence and continuation.
   - `handle_new_command($out_fh, $session)`: Command handler for `/new` slash command that archives the current session, re-initializes `$CURRENT_SESSION`, and prints user confirmation.
 
-### 6. Build & Modular Assembly Layer
+### 6. Remote Model Context Protocol (MCP) Client Layer
+- **Location**: [`code-agent.pl`](../code-agent.pl), [`src/mcp.pl`](../src/mcp.pl)
+- **Responsibilities**:
+  - **Protocol Engine**: Pure Perl 5.8.6 JSON-RPC 2.0 message builder and parser (`mcp_build_request`, `mcp_build_notification`, `mcp_parse_response`). Normalizes tool definitions (`inputSchema` to `input_schema`) for seamless consumption by Anthropic, Gemini, and OpenAI request adapters.
+  - **Secure HTTP Transport**: `mcp_http_post()` executes requests via `$CURL` and `$CACERT` using temporary curl config files (`-K`, permissions `0600`) to protect API keys and tokens from process inspection (`ps`). Tracks `mcp-session-id` headers and enforces a 20-second timeout.
+  - **Server Lifecycle & Dynamic Discovery**: Discovers servers from `~/.code-agent/mcp.json`, `./mcp_servers.json`, or environment variables (`CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`). Negotiates MCP handshake (`initialize` -> `notifications/initialized` -> `tools/list`), namespaces tools as `mcp__<server>__<name>` to avoid collisions, and registers them dynamically into global `@TOOLS`.
+  - **Runtime Management Command**: `handle_mcp_command()` provides the interactive `/mcp` slash command (`/mcp list`, `/mcp add <name> <url> [headers]`, `/mcp remove <name>`, `/mcp refresh`).
+
+### 7. Build & Modular Assembly Layer
 - **Location**: [`build.pl`](../build.pl), [`src/`](../src/), [`Install.command`](../Install.command), [`modern-install.command`](../modern-install.command)
 - **Responsibilities**:
-  - Modular decomposition of the monolithic codebase into 12 focused modules in `src/` (`header.pl`, `prompts.pl`, `json.pl`, `transport.pl`, `providers.pl`, `models_menu.pl`, `session.pl`, `tools.pl`, `terminal.pl`, `markdown.pl`, `ui.pl`, `main.pl`).
+  - Modular decomposition of the monolithic codebase into 13 focused modules in `src/` (`header.pl`, `prompts.pl`, `json.pl`, `transport.pl`, `providers.pl`, `models_menu.pl`, `session.pl`, `tools.pl`, `mcp.pl`, `terminal.pl`, `markdown.pl`, `ui.pl`, `main.pl`).
   - `build.pl`: Pure Perl 5.8.6 manifest-driven assembly script concatenating `src/*.pl` into the single-file distribution executable `code-agent.pl`, applying `chmod 0755`, and verifying syntax (`perl -c`).
   - Supports `--check` for CI/CD synchronization checks, and custom `--src-dir` and `--output` paths.
   - `Install.command`: Integrates automated `perl build.pl` rebuild when `build.pl` and `src/` are detected before deploying to `$BUILD_DIR/code-agent.pl` on PowerPC Tiger.

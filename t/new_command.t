@@ -163,7 +163,7 @@ is($archived_none, undef, "archive_session() returns undef when no current sessi
     my $script = "$root_dir/code-agent.pl";
 
     my $cmd = qq{printf "/new\\nexit\\n" | } .
-              qq{ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
+              qq{HOME="/nonexistent" ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
               qq{CLAUDE_CURL="$ENV{CLAUDE_CURL}" CLAUDE_CACERT="$ENV{CLAUDE_CACERT}" } .
               qq{$perl $script 2>&1};
     my $output = `$cmd`;
@@ -229,7 +229,7 @@ RECORDER
     chmod 0755, $recorder_script;
 
     my $cmd = qq{printf "First unique message\\n/new\\nSecond unique message\\nexit\\n" | } .
-              qq{ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
+              qq{HOME="/nonexistent" ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
               qq{CLAUDE_CURL="$recorder_script" CLAUDE_CACERT="$ENV{CLAUDE_CACERT}" } .
               qq{RECORDER_LOG="$log_file" } .
               qq{$perl $script 2>&1};
