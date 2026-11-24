@@ -1601,4 +1601,45 @@ sub read_test_file {
     like($encoded, qr/"jsonrpc":"2.0"/, "jsonrpc version is encoded as quoted string literal, not float");
 }
 
+# Test 53: Gemini schema sanitizer removes additionalProperties and unknown fields
+{
+    my $dirty_schema = {
+        type => 'object',
+        title => 'TestSchema',
+        '$schema' => 'http://json-schema.org/draft-07/schema#',
+        additionalProperties => 0,
+        required => ['repoName'],
+        properties => {
+            repoName => {
+                anyOf => [{ type => 'string' }, { type => 'null' }],
+                description => 'Target repo',
+                additionalProperties => 0,
+            },
+            count => {
+                type => 'integer',
+                default => 10,
+            },
+        },
+    };
+
+    my $cleaned = _clean_gemini_schema($dirty_schema);
+    is($cleaned->{type}, 'object', "Cleaned schema preserves type");
+    ok(!exists $cleaned->{additionalProperties}, "additionalProperties stripped from top-level");
+    ok(!exists $cleaned->{title}, "title stripped");
+    ok(!exists $cleaned->{'$schema'}, "\$schema stripped");
+    ok(!exists $cleaned->{properties}{repoName}{additionalProperties}, "additionalProperties stripped from nested properties");
+    is($cleaned->{properties}{repoName}{type}, 'string', "anyOf collapsed to primary type");
+    ok($cleaned->{properties}{repoName}{nullable}, "anyOf null mapped to nullable");
+    ok(!exists $cleaned->{properties}{count}{default}, "default stripped from properties");
+
+    my $test_tool = {
+        name => 'mcp__test__tool',
+        description => 'A tool with extra fields',
+        input_schema => $dirty_schema,
+    };
+    my $gemini_req = build_request_gemini([{ role => 'user', content => 'test' }], [$test_tool], 'sys', 100);
+    my $json_out = MiniJSON::encode($gemini_req);
+    unlike($json_out, qr/"additionalProperties"/, "Gemini request JSON has zero additionalProperties");
+}
+
 done_testing();
