@@ -1,4 +1,85 @@
 # --- Main entrypoint & Conversation loop ---
+
+sub handle_openai_switch {
+    if ($PROVIDER && $PROVIDER eq 'openai') {
+        print "\nAlready on [$PROVIDER / $MODEL].\n";
+        return 1;
+    }
+
+    my $base_url = $ENV{OPENAI_BASE_URL};
+    my $is_interactive = 0;
+
+    if (!defined $base_url || $base_url eq '') {
+        $is_interactive = 1;
+        print "\nEnter OpenAI / local LLM base URL (e.g. http://192.168.1.50:8080/v1 or http://localhost:11434/v1) [Esc or Ctrl+C to cancel]:\n";
+        my $raw_url = read_line_or_cancel("> ");
+        if (!defined $raw_url) {
+            print "\nCancelled. Staying on [$PROVIDER / $MODEL].\n";
+            return 0;
+        }
+        $raw_url =~ s/^\s+|\s+$//g;
+        if ($raw_url eq '') {
+            print "\nCancelled. Staying on [$PROVIDER / $MODEL].\n";
+            return 0;
+        }
+        $base_url = normalize_openai_endpoint($raw_url);
+    }
+
+    my $custom_model;
+    my $custom_key;
+
+    if ($is_interactive) {
+        my $default_model = $ENV{CLAUDE_MODEL} || 'local-model';
+        print "Enter model name [default: $default_model] (Esc or Ctrl+C to cancel):\n";
+        my $m_input = read_line_or_cancel("> ");
+        if (!defined $m_input) {
+            print "\nCancelled. Staying on [$PROVIDER / $MODEL].\n";
+            return 0;
+        }
+        $m_input =~ s/^\s+|\s+$//g;
+        $custom_model = length($m_input) ? $m_input : $default_model;
+
+        my $default_key = $ENV{OPENAI_API_KEY} || 'not-needed';
+        print "Enter API key [default: $default_key] (Esc or Ctrl+C to cancel):\n";
+        my $k_input = read_line_or_cancel("> ");
+        if (!defined $k_input) {
+            print "\nCancelled. Staying on [$PROVIDER / $MODEL].\n";
+            return 0;
+        }
+        $k_input =~ s/^\s+|\s+$//g;
+        $custom_key = length($k_input) ? $k_input : $default_key;
+
+        $ENV{OPENAI_BASE_URL} = $base_url;
+        $ENV{CLAUDE_MODEL}    = $custom_model;
+        $ENV{OPENAI_API_KEY}  = $custom_key;
+    }
+
+    eval { configure_provider('openai') };
+    if ($@) {
+        print "\nCould not switch: $@";
+        return 0;
+    }
+
+    print "\nSwitched to [$PROVIDER / $MODEL]. The conversation so far carries over.\n";
+
+    if ($is_interactive) {
+        my $target_file = get_env_file_path();
+        if (confirm("Save this configuration to $target_file so you don't need to enter it again?")) {
+            my %to_save = ( OPENAI_BASE_URL => $base_url );
+            $to_save{CLAUDE_MODEL}   = $custom_model if defined $custom_model && $custom_model ne '';
+            $to_save{OPENAI_API_KEY} = $custom_key   if defined $custom_key && $custom_key ne '' && $custom_key ne 'not-needed';
+            if (save_env_vars(\%to_save, $target_file)) {
+                print "Saved.\n";
+            }
+            else {
+                print "Could not save (cannot write $target_file).\n";
+            }
+        }
+    }
+
+    return 1;
+}
+
 unless (caller) {
     load_env_file();
 
@@ -69,32 +150,29 @@ while (1) {
         next;
     }
 
+    if ($input =~ m{^/compact(?:\s+(.*))?$}) {
+        handle_compact_command();
+        next;
+    }
+
     if ($input =~ m{^/mcp(?:\s+(.*))?$}) {
         handle_mcp_command($1);
         next;
     }
 
-    if ($input eq '/claude' || $input eq '/gemini' || $input eq '/openai') {
-        my $target = $input eq '/claude' ? 'anthropic'
-                   : $input eq '/gemini' ? 'gemini'
-                   :                       'openai';
+    if ($input eq '/openai' || $input eq '/local') {
+        handle_openai_switch();
+        next;
+    }
+
+    if ($input eq '/claude' || $input eq '/gemini') {
+        my $target = $input eq '/claude' ? 'anthropic' : 'gemini';
         if ($target eq $PROVIDER) {
             print "\nAlready on [$PROVIDER / $MODEL].\n";
         }
-        elsif ($target eq 'openai' && !$ENV{OPENAI_BASE_URL}) {
-            # OpenAI requires a base URL rather than just an API key.
-            # More reliable to set environment variables and restart.
-            print "\nSwitching to an OpenAI-compatible server needs OPENAI_BASE_URL set.\n";
-            print "e.g. export OPENAI_BASE_URL=http://192.168.1.50:8080/v1\n";
-            print "(also OPENAI_API_KEY and CLAUDE_MODEL if needed)\n";
-            print "Set it and restart. Staying on [$PROVIDER / $MODEL] for now.\n";
-        }
         else {
             eval { configure_provider($target) };
-            if ($@ && $target eq 'openai') {
-                print "\nCould not switch: $@";
-            }
-            elsif ($@) {
+            if ($@) {
                 # If key is missing, prompt interactively.
                 # Cancel with Esc or Ctrl+C to stay on current provider.
                 my $key_name = $target eq 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
@@ -138,6 +216,7 @@ while (1) {
     push @{$session->{messages}}, { role => 'user', content => $input };
 
     while (1) {
+        auto_compact_session_if_needed($session);
         my $body = build_request($session->{messages}, \@TOOLS, get_effective_system_prompt());
         my $resp = eval { call_api($API_URL, build_headers(), MiniJSON::encode($body)) };
         if ($@) {
