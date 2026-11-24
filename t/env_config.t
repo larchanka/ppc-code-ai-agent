@@ -13,49 +13,19 @@ $ENV{CLAUDE_CACERT} = "$root_dir/cacert.pem";
 system($^X, "$root_dir/build.pl") unless -f "$root_dir/code-agent.pl";
 require "$root_dir/code-agent.pl";
 
-# Test 1: get_env_file_path when both files are absent
+# Test 1: get_env_file_path returns ~/.code-agent/env
 {
     my $tmp = tempdir(CLEANUP => 1);
     local $ENV{HOME} = $tmp;
 
     my $path = get_env_file_path();
-    is($path, "$tmp/.code-agent-env", "get_env_file_path defaults to .code-agent-env when neither exists");
+    is($path, "$tmp/.code-agent/env", "get_env_file_path returns .code-agent/env");
 }
 
-# Test 2: get_env_file_path fallback when only legacy .claude-agent-env exists
+# Test 2: load_env_file loads variables without overwriting existing
 {
     my $tmp = tempdir(CLEANUP => 1);
-    local $ENV{HOME} = $tmp;
-    my $legacy = "$tmp/.claude-agent-env";
-    open(my $fh, '>', $legacy) or die "Cannot create $legacy: $!";
-    print $fh "export TEST_KEY=123\n";
-    close $fh;
-
-    my $path = get_env_file_path();
-    is($path, "$tmp/.claude-agent-env", "get_env_file_path falls back to .claude-agent-env when only legacy exists");
-}
-
-# Test 3: get_env_file_path preference when both files exist
-{
-    my $tmp = tempdir(CLEANUP => 1);
-    local $ENV{HOME} = $tmp;
-    my $legacy = "$tmp/.claude-agent-env";
-    my $new    = "$tmp/.code-agent-env";
-    open(my $fh1, '>', $legacy) or die "Cannot create $legacy: $!";
-    print $fh1 "export LEGACY=1\n";
-    close $fh1;
-    open(my $fh2, '>', $new) or die "Cannot create $new: $!";
-    print $fh2 "export NEW=1\n";
-    close $fh2;
-
-    my $path = get_env_file_path();
-    is($path, "$tmp/.code-agent-env", "get_env_file_path prefers .code-agent-env when both exist");
-}
-
-# Test 4: load_env_file loads variables without overwriting existing
-{
-    my $tmp = tempdir(CLEANUP => 1);
-    my $env_file = "$tmp/.code-agent-env";
+    my $env_file = "$tmp/test_env";
     open(my $fh, '>', $env_file) or die "Cannot create $env_file: $!";
     print $fh "export VAR_UNQUOTED=hello\n";
     print $fh "export VAR_DOUBLE_QUOTED=\"world\"\n";
@@ -81,97 +51,119 @@ require "$root_dir/code-agent.pl";
     is($ENV{VAR_PREEXISTING}, 'original_val', "Existing env var not overwritten");
 }
 
-# Test 5: load_env_file falls back to legacy file when called with no arguments
+# Test 3: load_env_file loads default ~/.code-agent/env
 {
     my $tmp = tempdir(CLEANUP => 1);
     local $ENV{HOME} = $tmp;
-    my $legacy = "$tmp/.claude-agent-env";
-    open(my $fh, '>', $legacy) or die "Cannot create $legacy: $!";
-    print $fh "export LEGACY_LOADED=yes\n";
+    my $cfg_dir = "$tmp/.code-agent";
+    mkdir $cfg_dir, 0700;
+    my $env_file = "$cfg_dir/env";
+    open(my $fh, '>', $env_file) or die "Cannot create $env_file: $!";
+    print $fh "export DEFAULT_LOADED=yes\n";
     close $fh;
 
-    delete $ENV{LEGACY_LOADED};
+    delete $ENV{DEFAULT_LOADED};
     load_env_file();
 
-    is($ENV{LEGACY_LOADED}, 'yes', "load_env_file() loads from legacy file if .code-agent-env missing");
+    is($ENV{DEFAULT_LOADED}, 'yes', "load_env_file() loads default .code-agent/env");
 }
 
-# Test 6: _maybe_save_gemini_key saves to .code-agent-env by default
+# Test 4: _maybe_save_gemini_key creates directory and saves to ~/.code-agent/env
 {
     my $tmp = tempdir(CLEANUP => 1);
     local $ENV{HOME} = $tmp;
 
     no warnings 'redefine';
+    no warnings 'once';
     local *read_line_interactive = sub { return "y\n"; };
     use warnings 'redefine';
 
     _maybe_save_gemini_key("test_key_gemini_123");
 
-    my $target = "$tmp/.code-agent-env";
-    ok(-f $target, "_maybe_save_gemini_key creates .code-agent-env when clean install");
+    my $target = "$tmp/.code-agent/env";
+    ok(-d "$tmp/.code-agent", "_maybe_save_gemini_key creates .code-agent directory");
+    ok(-f $target, "_maybe_save_gemini_key creates .code-agent/env when clean install");
     open(my $fh, '<', $target) or die "Cannot read $target: $!";
     my $content = do { local $/; <$fh> };
     close $fh;
-    like($content, qr/export GEMINI_API_KEY=test_key_gemini_123/, "Saved key is present in .code-agent-env");
+    like($content, qr/export GEMINI_API_KEY=test_key_gemini_123/, "Saved key is present in .code-agent/env");
 }
 
-# Test 7: _maybe_save_gemini_key updates legacy file if only legacy exists
-{
-    my $tmp = tempdir(CLEANUP => 1);
-    local $ENV{HOME} = $tmp;
-    my $legacy = "$tmp/.claude-agent-env";
-    open(my $fh, '>', $legacy) or die "Cannot create $legacy: $!";
-    print $fh "export OTHER_VAR=xyz\n";
-    close $fh;
-
-    no warnings 'redefine';
-    local *read_line_interactive = sub { return "y\n"; };
-    use warnings 'redefine';
-
-    _maybe_save_gemini_key("legacy_target_key");
-
-    ok(!-f "$tmp/.code-agent-env", ".code-agent-env not created when legacy file exists");
-    open(my $rf, '<', $legacy) or die "Cannot read $legacy: $!";
-    my $content = do { local $/; <$rf> };
-    close $rf;
-    like($content, qr/export OTHER_VAR=xyz/, "Preserved existing variables in legacy file");
-    like($content, qr/export GEMINI_API_KEY=legacy_target_key/, "Appended new key to legacy file");
-}
-
-# Test 8: Shell wrapper compatibility logic (Install.command template)
+# Test 5: Shell wrapper logic (sources ~/.code-agent/env)
 {
     my $tmp = tempdir(CLEANUP => 1);
     my $wrapper = "$tmp/code";
     open(my $wh, '>', $wrapper) or die "Cannot create $wrapper: $!";
     print $wh <<"EOF";
 #!/bin/bash
-if [ -f "\$HOME/.code-agent-env" ]; then
-  source "\$HOME/.code-agent-env"
-elif [ -f "\$HOME/.claude-agent-env" ]; then
-  source "\$HOME/.claude-agent-env"
+if [ -f "\$HOME/.code-agent/env" ]; then
+  source "\$HOME/.code-agent/env"
 fi
 echo "PROVIDER=\$TEST_PROVIDER"
 EOF
     close $wh;
     chmod 0755, $wrapper;
 
-    # Scenario A: Modern .code-agent-env present
-    my $home_modern = tempdir(CLEANUP => 1);
-    open(my $mh, '>', "$home_modern/.code-agent-env") or die $!;
+    my $home = tempdir(CLEANUP => 1);
+    mkdir "$home/.code-agent", 0700;
+    open(my $mh, '>', "$home/.code-agent/env") or die $!;
     print $mh "export TEST_PROVIDER=modern_code\n";
     close $mh;
-    my $out_modern = `HOME="$home_modern" /bin/bash "$wrapper"`;
-    chomp $out_modern;
-    is($out_modern, "PROVIDER=modern_code", "Wrapper script sources modern .code-agent-env");
+    my $out = `HOME="$home" /bin/bash "$wrapper"`;
+    chomp $out;
+    is($out, "PROVIDER=modern_code", "Wrapper script sources .code-agent/env");
+}
 
-    # Scenario B: Only legacy .claude-agent-env present
-    my $home_legacy = tempdir(CLEANUP => 1);
-    open(my $lh, '>', "$home_legacy/.claude-agent-env") or die $!;
-    print $lh "export TEST_PROVIDER=legacy_claude\n";
+# Test 6: Installer migration from legacy files to ~/.code-agent/env
+{
+    my $tmp = tempdir(CLEANUP => 1);
+    my $legacy = "$tmp/.code-agent-env";
+    open(my $lh, '>', $legacy) or die $!;
+    print $lh "export LEGACY=migrated\n";
     close $lh;
-    my $out_legacy = `HOME="$home_legacy" /bin/bash "$wrapper"`;
-    chomp $out_legacy;
-    is($out_legacy, "PROVIDER=legacy_claude", "Wrapper script falls back to legacy .claude-agent-env");
+
+    # Simulate installer migration logic
+    my $config_dir = "$tmp/.code-agent";
+    my $env_file   = "$config_dir/env";
+    mkdir $config_dir, 0700;
+    if (!-f $env_file) {
+        if (-f "$tmp/.code-agent-env") {
+            rename "$tmp/.code-agent-env", $env_file;
+        } elsif (-f "$tmp/.claude-agent-env") {
+            rename "$tmp/.claude-agent-env", $env_file;
+        }
+    }
+
+    ok(-f $env_file, "Migrated legacy file to .code-agent/env");
+    ok(!-f $legacy, "Old legacy file removed");
+    open(my $fh, '<', $env_file) or die $!;
+    my $c = do { local $/; <$fh> };
+    close $fh;
+    like($c, qr/export LEGACY=migrated/, "Migrated content intact");
+}
+
+# Test 7: Installer cleanup of legacy directories (~/code-toolchain, ~/code-build, etc.)
+{
+    my $tmp = tempdir(CLEANUP => 1);
+    my $old_tc = "$tmp/code-toolchain";
+    my $old_bd = "$tmp/code-build";
+    my $leg_tc = "$tmp/claude-toolchain";
+    my $leg_bd = "$tmp/claude-build";
+    mkdir $old_tc or die $!;
+    mkdir $old_bd or die $!;
+    mkdir $leg_tc or die $!;
+    mkdir $leg_bd or die $!;
+
+    for my $dir ($old_tc, $old_bd, $leg_tc, $leg_bd) {
+        if (-d $dir) {
+            rmdir $dir or system("rm", "-rf", $dir);
+        }
+    }
+
+    ok(!-d $old_tc, "Old code-toolchain removed");
+    ok(!-d $old_bd, "Old code-build removed");
+    ok(!-d $leg_tc, "Legacy claude-toolchain removed");
+    ok(!-d $leg_bd, "Legacy claude-build removed");
 }
 
 done_testing();

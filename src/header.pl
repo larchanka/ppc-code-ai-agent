@@ -31,8 +31,9 @@ binmode STDERR, ':encoding(UTF-8)';
 $| = 1;
 
 # --- Configuration ---
-my $CURL   = $ENV{CLAUDE_CURL}   || (-x '/usr/local/code-toolchain/bin/curl' ? '/usr/local/code-toolchain/bin/curl' : '/usr/local/claude-toolchain/bin/curl');
-my $CACERT = $ENV{CLAUDE_CACERT} || (-f '/usr/local/code-toolchain/cacert.pem' ? '/usr/local/code-toolchain/cacert.pem' : '/usr/local/claude-toolchain/cacert.pem');
+my $home_dir = $ENV{HOME} || '.';
+my $CURL   = $ENV{CLAUDE_CURL}   || (-x "$home_dir/.code-agent/toolchain/bin/curl" ? "$home_dir/.code-agent/toolchain/bin/curl" : (-x '/usr/local/code-toolchain/bin/curl' ? '/usr/local/code-toolchain/bin/curl' : 'curl'));
+my $CACERT = $ENV{CLAUDE_CACERT} || (-f "$home_dir/.code-agent/build/src/cacert.pem" ? "$home_dir/.code-agent/build/src/cacert.pem" : (-f '/usr/local/code-toolchain/cacert.pem' ? '/usr/local/code-toolchain/cacert.pem' : ''));
 
 sub parse_context_size {
     my ($input) = @_;
@@ -109,14 +110,10 @@ sub init_retry_config {
 
 init_retry_config();
 
-# Resolves the environment file path.
-# Prefers ~/.code-agent-env, falling back to legacy ~/.claude-agent-env if it exists.
+# Resolves the environment file path (~/.code-agent/env).
 sub get_env_file_path {
     my $home = $ENV{HOME} || '.';
-    my $primary = "$home/.code-agent-env";
-    my $legacy  = "$home/.claude-agent-env";
-    return $legacy if !-e $primary && -e $legacy;
-    return $primary;
+    return "$home/.code-agent/env";
 }
 
 # Loads environment variables from an env file (defaulting to get_env_file_path()).

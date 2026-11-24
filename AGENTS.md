@@ -51,20 +51,20 @@ export CLAUDE_CURL="./curl"
 export CLAUDE_CACERT="./cacert.pem"
 perl code-agent.pl
 
-# Execution using saved configuration file (~/.code-agent-env)
+# Execution using saved configuration file (~/.code-agent/env)
 # Launched via wrapper script:
 code
 # or
 code-agent
 ```
 
-### Environment Configuration (`~/.code-agent-env`)
-Credentials and runtime settings can be placed in `~/.code-agent-env` (`chmod 0600`):
+### Environment Configuration (`~/.code-agent/env`)
+Credentials and runtime settings are placed in `~/.code-agent/env` (`chmod 0600`):
 - `load_env_file()` in `src/header.pl` automatically parses `export KEY=VALUE` or `KEY=VALUE`.
 - Precedence: Active environment variables in `%ENV` override file entries.
-- Fallback: Automatically falls back to `~/.claude-agent-env` if `~/.code-agent-env` does not exist.
+- Migration: Install scripts (`Install.command`, `modern-install.command`) migrate legacy `~/.code-agent-env` and `~/.claude-agent-env` into `~/.code-agent/env`.
 - Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_CURL`, `CLAUDE_CACERT`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`.
-- Remote MCP server configuration is discovered from `~/.code-agent-mcp.json`, `./mcp_servers.json`, or environment variables.
+- Remote MCP server configuration is discovered from `~/.code-agent/mcp.json`, `./mcp_servers.json`, or environment variables.
 
 ### Verification & Testing
 ```bash

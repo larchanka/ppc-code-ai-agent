@@ -12,10 +12,21 @@ echo " Code Agent for PowerPC Mac - Installer"
 echo "=================================================="
 echo ""
 
-TOOLCHAIN_DIR="$HOME/code-toolchain"
-BUILD_DIR="$HOME/code-build"
+AGENT_DIR="$HOME/.code-agent"
+TOOLCHAIN_DIR="$AGENT_DIR/toolchain"
+BUILD_DIR="$AGENT_DIR/build"
 BIN_DIR="$HOME/bin"
 
+# Clean up legacy/old standalone directories if they exist
+for old_dir in "$HOME/code-toolchain" "$HOME/code-build" "$HOME/claude-toolchain" "$HOME/claude-build"; do
+  if [ -d "$old_dir" ]; then
+    echo "Removing old $old_dir..."
+    rm -rf "$old_dir"
+  fi
+done
+
+mkdir -p "$AGENT_DIR"
+chmod 700 "$AGENT_DIR"
 mkdir -p "$TOOLCHAIN_DIR/bin"
 mkdir -p "$BUILD_DIR/src"
 
@@ -56,30 +67,37 @@ echo ""
 # ------------------------------------------------------------------
 # API key setup
 # ------------------------------------------------------------------
-ENV_FILE="$HOME/.code-agent-env"
-LEGACY_ENV_FILE="$HOME/.claude-agent-env"
+CONFIG_DIR="$HOME/.code-agent"
+ENV_FILE="$CONFIG_DIR/env"
 CURL_BIN="$TOOLCHAIN_DIR/bin/curl"
 CACERT="$BUILD_DIR/src/cacert.pem"
 AGENT_SCRIPT="$BUILD_DIR/code-agent.pl"
+
+mkdir -p "$CONFIG_DIR"
+chmod 700 "$CONFIG_DIR"
+
+if [ ! -f "$ENV_FILE" ]; then
+  if [ -f "$HOME/.code-agent-env" ]; then
+    echo "Migrating legacy configuration from $HOME/.code-agent-env to $ENV_FILE..."
+    mv "$HOME/.code-agent-env" "$ENV_FILE"
+  elif [ -f "$HOME/.claude-agent-env" ]; then
+    echo "Migrating legacy configuration from $HOME/.claude-agent-env to $ENV_FILE..."
+    mv "$HOME/.claude-agent-env" "$ENV_FILE"
+  fi
+fi
 
 if [ -f "$ENV_FILE" ]; then
   overwrite="n"
   echo "Using existing API key from $ENV_FILE (this is normal when upgrading)."
   echo "To set a different key, delete this file and run the installer again:"
   echo "  rm $ENV_FILE"
-elif [ -f "$LEGACY_ENV_FILE" ]; then
-  overwrite="n"
-  ENV_FILE="$LEGACY_ENV_FILE"
-  echo "Using existing API key from legacy $LEGACY_ENV_FILE (this is normal when upgrading)."
-  echo "To set a different key, delete this file and run the installer again:"
-  echo "  rm $LEGACY_ENV_FILE"
 else
   overwrite="y"
 fi
 
 case "$overwrite" in
   y|Y)
-    ENV_FILE="$HOME/.code-agent-env"
+    ENV_FILE="$CONFIG_DIR/env"
     echo ""
     echo "Which AI should this agent talk to?"
     echo "  1) Anthropic (Claude) - most capable, pay-as-you-go billing, needs a credit card"
@@ -181,10 +199,8 @@ echo ""
 mkdir -p "$BIN_DIR"
 cat > "$BIN_DIR/code" << WRAPEOF
 #!/bin/bash
-if [ -f "$HOME/.code-agent-env" ]; then
-  source "$HOME/.code-agent-env"
-elif [ -f "$HOME/.claude-agent-env" ]; then
-  source "$HOME/.claude-agent-env"
+if [ -f "$HOME/.code-agent/env" ]; then
+  source "$HOME/.code-agent/env"
 fi
 export CLAUDE_CURL=$CURL_BIN
 export CLAUDE_CACERT=$CACERT

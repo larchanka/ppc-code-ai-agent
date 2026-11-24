@@ -28,11 +28,11 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 
 #### Provider Management & Setup
 - `configure_provider($provider)`: Configures `$API_KEY`, `$MODEL`, `$API_URL`, and `$ANTHROPIC_VERSION` for `anthropic`, `gemini`, or `openai`.
-- `get_env_file_path()`: Resolves the environment file path, preferring `~/.code-agent-env` with fallback to `~/.claude-agent-env`.
+- `get_env_file_path()`: Resolves the environment file path (`~/.code-agent/env`).
 - `load_env_file([$file])`: Loads environment variables from the environment file if not already set in `%ENV`.
 - `gemini_key_setup()`: Interactive CLI wizard guiding users through setting up a free Google AI Studio key.
 - `_validate_gemini_key($key)`: Performs a lightweight test query to verify validity.
-- `_maybe_save_gemini_key($key)`: Prompts the user to save credentials to `~/.code-agent-env`.
+- `_maybe_save_gemini_key($key)`: Prompts the user to save credentials to `~/.code-agent/env`.
 - `read_secret_or_cancel($prompt)`: Prompts for sensitive input with echo disabled, supporting cancel via Escape or Ctrl+C.
 - `get_current_model()`: Returns active `$MODEL`.
 - `get_current_provider()`: Returns active `$PROVIDER`.
@@ -126,7 +126,7 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `run_subagent($task, $subagent_type)`: Executes synchronous turn-based sub-agent loop up to 50 turns with isolated conversation session, turn countdown context injection, and visual tree formatting.
 
 #### Remote Model Context Protocol (MCP) Client (`src/mcp.pl`)
-- `get_mcp_config_path()`: Discovers configuration file path checking `CLAUDE_MCP_CONFIG`, `./mcp_servers.json`, `~/.code-agent-mcp.json`, and legacy `~/.claude-agent-mcp.json`.
+- `get_mcp_config_path()`: Discovers configuration file path checking `CLAUDE_MCP_CONFIG`, `./mcp_servers.json`, and `~/.code-agent/mcp.json`.
 - `parse_mcp_config($json_text)`: Parses JSON string containing server definitions in `{ "mcpServers": { ... } }` or flat `{ "server": { ... } }` format into normalized server descriptors.
 - `load_mcp_config([$file])`: Reads and parses server definitions from discovered or explicit config path, merging with inline servers from `CLAUDE_MCP_SERVERS`.
 - `mcp_build_request($method, $params, $id)`: Constructs standard JSON-RPC 2.0 request payload.
@@ -195,12 +195,12 @@ A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN depe
 A standalone Bash script providing one-click installation on Mac OS X 10.4 Tiger.
 
 ### Key Operations
-1. **Toolchain Installation**: Copies `curl` to `$HOME/code-toolchain/bin/curl` and sets executable permissions.
+1. **Toolchain Installation**: Copies `curl` to `$HOME/.code-agent/toolchain/bin/curl` and sets executable permissions. Cleans up old standalone directories (`code-toolchain`, `code-build`) if present.
 2. **Build from Source**: Automatically executes `perl build.pl` if `build.pl` and `src/` are present before copying to the build directory.
-3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/code-build/`.
+3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/.code-agent/build/`.
 4. **Curl Verification**: Executes `curl --version` to verify PowerPC CPU and kernel compatibility.
-5. **Interactive Provider Selection**: Guides user to choose Anthropic or Gemini, prompts for API key without echo, and writes `~/.code-agent-env` with permissions `0600`.
-6. **Launcher Wrapper**: Generates `$HOME/bin/code`, which sources the environment and launches `code-agent.pl`.
+5. **Interactive Provider Selection**: Guides user to choose Anthropic or Gemini, prompts for API key without echo, migrates legacy configuration if present, and writes `~/.code-agent/env` with permissions `0600`.
+6. **Launcher Wrapper**: Generates `$HOME/bin/code`, which sources `~/.code-agent/env` and launches `$HOME/.code-agent/build/code-agent.pl`.
 7. **Path Configuration**: Updates `$HOME/.bash_profile` with `$HOME/bin` if not already present.
 8. **End-to-End Connectivity Verification**: Makes a test HTTP request to verify API keys and network connectivity before concluding setup.
 
@@ -214,9 +214,9 @@ A Bash installation script tailored for modern macOS (Intel and Apple Silicon) a
 ### Key Operations
 1. **Host Environment Checks**: Verifies availability of system `perl` and TLS-capable `curl`.
 2. **Build from Source**: Executes `perl build.pl` if `build.pl` and `src/` are present.
-3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/code-build/`.
-4. **Interactive Provider Selection**: Configures Anthropic or Gemini keys securely in `~/.code-agent-env` (`0600` permissions).
-5. **Launcher Wrappers**: Generates `$HOME/bin/code-agent` and symlinks `$HOME/bin/code` (checking for conflicts with VS Code).
+3. **Runtime Deployment**: Copies `code-agent.pl` and `cacert.pem` to `$HOME/.code-agent/build/`. Cleans up old standalone directories (`code-toolchain`, `code-build`) if present.
+4. **Interactive Provider Selection**: Configures Anthropic or Gemini keys securely in `~/.code-agent/env` (`0600` permissions), migrating legacy files if present.
+5. **Launcher Wrappers**: Generates `$HOME/bin/code-agent` (pointing to `$HOME/.code-agent/build/code-agent.pl`) and symlinks `$HOME/bin/code` (checking for conflicts with VS Code).
 6. **Shell Profile Configuration**: Updates `~/.zshrc`, `~/.bashrc`, and/or `~/.bash_profile` based on active shell and OS platform.
 7. **End-to-End Connectivity Verification**: Verifies API keys against Anthropic or Google Gemini endpoints.
 

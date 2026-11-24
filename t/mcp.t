@@ -42,21 +42,15 @@ our ($MCP_TIMEOUT, $MCP_PROTOCOL_VERSION, %MCP_SERVERS, %MCP_TOOLS, @TOOLS);
     # No files present -> undef
     is(get_mcp_config_path(), undef, "get_mcp_config_path() returns undef when no config exists");
 
-    # Legacy fallback: ~/.claude-agent-mcp.json exists, ~/.code-agent-mcp.json missing
-    my $legacy_file = File::Spec->catfile($tmp_dir, '.claude-agent-mcp.json');
-    open my $lfh, '>', $legacy_file or die $!;
-    print $lfh "{}";
-    close $lfh;
-
-    is(get_mcp_config_path(), $legacy_file, "Falls back to ~/.claude-agent-mcp.json when primary missing");
-
-    # Primary precedence: ~/.code-agent-mcp.json exists
-    my $primary_file = File::Spec->catfile($tmp_dir, '.code-agent-mcp.json');
+    # User config: ~/.code-agent/mcp.json
+    my $cfg_dir = File::Spec->catdir($tmp_dir, '.code-agent');
+    mkdir $cfg_dir, 0700;
+    my $primary_file = File::Spec->catfile($cfg_dir, 'mcp.json');
     open my $pfh, '>', $primary_file or die $!;
     print $pfh "{}";
     close $pfh;
 
-    is(get_mcp_config_path(), $primary_file, "Prefers ~/.code-agent-mcp.json over legacy file");
+    is(get_mcp_config_path(), $primary_file, "Discovers ~/.code-agent/mcp.json");
 
     # CLAUDE_MCP_CONFIG environment variable precedence
     my $custom_file = File::Spec->catfile($tmp_dir, 'custom-mcp.json');
@@ -232,7 +226,9 @@ JSON
     local $ENV{CLAUDE_MCP_CONFIG} = undef;
 
     # Create config file with server 'srv1'
-    my $cfg_file = File::Spec->catfile($tmp_dir, '.code-agent-mcp.json');
+    my $cfg_dir = File::Spec->catdir($tmp_dir, '.code-agent');
+    mkdir $cfg_dir, 0700;
+    my $cfg_file = File::Spec->catfile($cfg_dir, 'mcp.json');
     open my $fh, '>', $cfg_file or die $!;
     print $fh '{"srv1":{"url":"http://srv1.local/mcp"}}';
     close $fh;

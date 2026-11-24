@@ -64,7 +64,7 @@ graph TD
 - **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 52–106, 134–270, 345–640)
 - **Responsibilities**:
   - `MiniJSON`: Zero-dependency recursive descent JSON parser and serializer.
-  - Environment & credential management: `load_env_file()` loads `~/.code-agent-env` (with fallback to `~/.claude-agent-env`) without overriding existing `%ENV` variables.
+  - Environment & credential management: `load_env_file()` loads `~/.code-agent/env` without overriding existing `%ENV` variables. Legacy `~/.code-agent-env` and `~/.claude-agent-env` files are migrated on installation.
   - Provider configurations for **Anthropic** (`claude-sonnet-4-5-20250929`), **Gemini** (`gemini-3.5-flash-lite`), and **OpenAI-compatible** local endpoints (e.g. Ollama, llama.cpp on LAN).
   - Runtime provider switching via slash commands (`/claude`, `/gemini`, `/openai`).
   - Request schema translation between Anthropic's messages/tools format, Gemini's contents/functionDeclarations, and OpenAI's chat/completions format.
@@ -72,7 +72,7 @@ graph TD
 ### 3. Network Transport Layer
 - **Location**: [`code-agent.pl`](../code-agent.pl) (Lines 272–344), [`curl`](../curl), [`cacert.pem`](../cacert.pem)
 - **Responsibilities**:
-  - Execution of `$CLAUDE_CURL` (`/usr/local/code-toolchain/bin/curl` or bundled `./curl`).
+  - Execution of `$CLAUDE_CURL` (`~/.code-agent/toolchain/bin/curl`, `/usr/local/code-toolchain/bin/curl`, or bundled `./curl`).
   - Strict certificate verification using bundled Mozilla `cacert.pem`.
   - Payload streaming and response capture via temporary files or pipes.
   - Automatic retry mechanism (`call_api` wrapping `_call_api_once`) that retries failed or transient HTTP/JSON/provider API calls up to 3 times (`CLAUDE_MAX_RETRIES`, default `3`) with a 5-second interval (`CLAUDE_RETRY_DELAY`, default `5`).
@@ -107,7 +107,7 @@ graph TD
 - **Responsibilities**:
   - **Protocol Engine**: Pure Perl 5.8.6 JSON-RPC 2.0 message builder and parser (`mcp_build_request`, `mcp_build_notification`, `mcp_parse_response`). Normalizes tool definitions (`inputSchema` to `input_schema`) for seamless consumption by Anthropic, Gemini, and OpenAI request adapters.
   - **Secure HTTP Transport**: `mcp_http_post()` executes requests via `$CURL` and `$CACERT` using temporary curl config files (`-K`, permissions `0600`) to protect API keys and tokens from process inspection (`ps`). Tracks `mcp-session-id` headers and enforces a 20-second timeout.
-  - **Server Lifecycle & Dynamic Discovery**: Discovers servers from `~/.code-agent-mcp.json`, `./mcp_servers.json`, or environment variables (`CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`). Negotiates MCP handshake (`initialize` -> `notifications/initialized` -> `tools/list`), namespaces tools as `mcp__<server>__<name>` to avoid collisions, and registers them dynamically into global `@TOOLS`.
+  - **Server Lifecycle & Dynamic Discovery**: Discovers servers from `~/.code-agent/mcp.json`, `./mcp_servers.json`, or environment variables (`CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`). Negotiates MCP handshake (`initialize` -> `notifications/initialized` -> `tools/list`), namespaces tools as `mcp__<server>__<name>` to avoid collisions, and registers them dynamically into global `@TOOLS`.
   - **Runtime Management Command**: `handle_mcp_command()` provides the interactive `/mcp` slash command (`/mcp list`, `/mcp add <name> <url> [headers]`, `/mcp remove <name>`, `/mcp refresh`).
 
 ### 7. Build & Modular Assembly Layer

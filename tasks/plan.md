@@ -3,7 +3,7 @@
 ## Overview
 Add native Remote Model Context Protocol (MCP) client support to `ppc-code-ai-agent` for Mac OS X 10.4 Tiger (PowerPC G3/G4/G5) and modern platforms, implemented in 100% standard Perl 5.8.6 with zero CPAN dependencies.
 
-The agent will connect to remote MCP servers over HTTP/JSON-RPC 2.0 (using the bundled TLS 1.2/1.3 curl toolchain), negotiate the MCP protocol (`initialize`, `notifications/initialized`), discover remote tools via `tools/list`, dynamically register them into `@TOOLS`, and execute them via `tools/call`. Remote MCP tools will fully respect `$AUTO_MODE` confirmation rules, subagent isolation boundaries (`plan` vs `build`), and prompt injection spotlighting (`<untrusted_tool_output>`). Users can configure servers via `~/.code-agent-mcp.json` / `mcp_servers.json` / environment variables, and manage connections at runtime via a new `/mcp` slash command.
+The agent will connect to remote MCP servers over HTTP/JSON-RPC 2.0 (using the bundled TLS 1.2/1.3 curl toolchain), negotiate the MCP protocol (`initialize`, `notifications/initialized`), discover remote tools via `tools/list`, dynamically register them into `@TOOLS`, and execute them via `tools/call`. Remote MCP tools will fully respect `$AUTO_MODE` confirmation rules, subagent isolation boundaries (`plan` vs `build`), and prompt injection spotlighting (`<untrusted_tool_output>`). Users can configure servers via `~/.code-agent/mcp.json` / `mcp_servers.json` / environment variables, and manage connections at runtime via a new `/mcp` slash command.
 
 ---
 
@@ -45,7 +45,7 @@ The agent will connect to remote MCP servers over HTTP/JSON-RPC 2.0 (using the b
 ### Phase 1: Foundation — Configuration, Protocol Engine & Build Manifest
 
 ## Task 1: Build Manifest, Constants & Configuration Discovery
-**Description:** Register `src/mcp.pl` in `build.pl` and `t/build.t`. Implement configuration file discovery (`~/.code-agent-mcp.json`, `mcp_servers.json`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`) and parser supporting both standard `{ "mcpServers": { ... } }` and flat server dictionaries.
+**Description:** Register `src/mcp.pl` in `build.pl` and `t/build.t`. Implement configuration file discovery (`~/.code-agent/mcp.json`, `mcp_servers.json`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`) and parser supporting both standard `{ "mcpServers": { ... } }` and flat server dictionaries.
 
 **Acceptance criteria:**
 - [ ] `build.pl` includes `src/mcp.pl` in `@MODULES` in manifest order.

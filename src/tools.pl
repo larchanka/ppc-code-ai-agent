@@ -237,7 +237,7 @@ sub _validate_gemini_key {
     return ('bad_key', "HTTP $http");
 }
 
-# Prompt whether to save key to ~/.code-agent-env; if confirmed,
+# Prompt whether to save key to ~/.code-agent/env; if confirmed,
 # strip existing GEMINI_API_KEY line and append new one.
 sub _maybe_save_gemini_key {
     my ($key) = @_;
@@ -246,6 +246,12 @@ sub _maybe_save_gemini_key {
     my $a = read_line_interactive('', 0);
     return unless defined $a;
     return if $a =~ /^\s*n/i;
+
+    (my $dir = $target_file) =~ s{/[^/]+$}{};
+    if (length $dir && !-d $dir) {
+        mkdir $dir, 0700;
+        chmod 0700, $dir;
+    }
 
     my @keep;
     if (open(my $rf, '<', $target_file)) {

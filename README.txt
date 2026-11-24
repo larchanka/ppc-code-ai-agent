@@ -39,7 +39,7 @@ own isolated context to keep conversation history clean.
 REMOTE MCP SUPPORT (MODEL CONTEXT PROTOCOL)
 --------------------------------------------
 The agent supports Model Context Protocol (MCP) servers over HTTP/JSON-RPC.
-Servers can be configured via ~/.code-agent-mcp.json, ./mcp_servers.json,
+Servers can be configured via ~/.code-agent/mcp.json, ./mcp_servers.json,
 or environment variables:
 {
   "mcpServers": {
@@ -86,7 +86,7 @@ WHAT'S INSIDE
 
 CONFIGURATION & ENVIRONMENT
 -------------------------
-Settings and API keys are stored in "$HOME/.code-agent-env" (permissions 0600):
+Settings and API keys are stored in "$HOME/.code-agent/env" (permissions 0600):
 - CLAUDE_PROVIDER   : Default provider ("gemini", "anthropic", or "openai")
 - GEMINI_API_KEY    : Google Gemini API key
 - ANTHROPIC_API_KEY : Anthropic Claude API key
@@ -99,9 +99,10 @@ Settings and API keys are stored in "$HOME/.code-agent-env" (permissions 0600):
 - CLAUDE_MCP_CONFIG : Path to MCP configuration JSON file
 - CLAUDE_MCP_SERVERS: Inline JSON string of MCP server configurations
 
-To view or edit: nano ~/.code-agent-env
-To change keys: rm ~/.code-agent-env and run Install.command again.
-If ~/.code-agent-env is missing, the agent will check for ~/.claude-agent-env.
+To view or edit: nano ~/.code-agent/env
+To change keys: rm -rf ~/.code-agent and run Install.command again.
+Legacy ~/.code-agent-env and ~/.claude-agent-env files are automatically
+migrated into ~/.code-agent/env during installation.
 
 BUILDING FROM SOURCE
 -------------------------

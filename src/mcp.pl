@@ -10,8 +10,7 @@ our $MCP_REQ_ID = 1;
 # Precedence:
 # 1. $ENV{CLAUDE_MCP_CONFIG}
 # 2. Local mcp_servers.json in current directory
-# 3. Primary: ~/.code-agent-mcp.json
-# 4. Legacy:  ~/.claude-agent-mcp.json
+# 3. User config: ~/.code-agent/mcp.json
 sub get_mcp_config_path {
     if (defined $ENV{CLAUDE_MCP_CONFIG} && length $ENV{CLAUDE_MCP_CONFIG}) {
         my $path = $ENV{CLAUDE_MCP_CONFIG};
@@ -25,10 +24,8 @@ sub get_mcp_config_path {
     }
 
     my $home = $ENV{HOME} || '.';
-    my $primary = "$home/.code-agent-mcp.json";
-    my $legacy  = "$home/.claude-agent-mcp.json";
+    my $primary = "$home/.code-agent/mcp.json";
 
-    return $legacy if !-e $primary && -e $legacy;
     return $primary if -e $primary;
     return undef;
 }
@@ -335,12 +332,16 @@ our $MCP_TMP_COUNTER = 0;
 sub _mcp_get_curl {
     return $ENV{CLAUDE_CURL} if defined $ENV{CLAUDE_CURL} && length $ENV{CLAUDE_CURL};
     return $CURL if defined $CURL && length $CURL;
+    my $home_dir = $ENV{HOME} || '.';
+    return "$home_dir/.code-agent/toolchain/bin/curl" if -x "$home_dir/.code-agent/toolchain/bin/curl";
     return (-x '/usr/local/code-toolchain/bin/curl' ? '/usr/local/code-toolchain/bin/curl' : 'curl');
 }
 
 sub _mcp_get_cacert {
     return $ENV{CLAUDE_CACERT} if defined $ENV{CLAUDE_CACERT} && length $ENV{CLAUDE_CACERT};
     return $CACERT if defined $CACERT && length $CACERT;
+    my $home_dir = $ENV{HOME} || '.';
+    return "$home_dir/.code-agent/build/src/cacert.pem" if -f "$home_dir/.code-agent/build/src/cacert.pem";
     return (-f '/usr/local/code-toolchain/cacert.pem' ? '/usr/local/code-toolchain/cacert.pem' : '');
 }
 
