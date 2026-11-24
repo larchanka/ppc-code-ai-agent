@@ -1401,6 +1401,10 @@ sub read_test_file {
 
 # Test 45: handle_mcp_command('add <name> <url>') connects and discovers tools
 {
+    my $tmp_dir = tempdir(CLEANUP => 1);
+    local $ENV{HOME} = $tmp_dir;
+    local $ENV{CLAUDE_MCP_CONFIG} = undef;
+    local $ENV{CLAUDE_MCP_SERVERS} = undef;
     local $ENV{CLAUDE_CURL} = "$root_dir/t/mock_curl.pl";
     local $ENV{CLAUDE_CACERT} = "$root_dir/cacert.pem";
     my $cnt_file = "$root_dir/t/test_count_45.txt";
@@ -1433,6 +1437,10 @@ sub read_test_file {
 
 # Test 46: handle_mcp_command('add <name> <url> [headers]') with JSON headers
 {
+    my $tmp_dir = tempdir(CLEANUP => 1);
+    local $ENV{HOME} = $tmp_dir;
+    local $ENV{CLAUDE_MCP_CONFIG} = undef;
+    local $ENV{CLAUDE_MCP_SERVERS} = undef;
     local $ENV{CLAUDE_CURL} = "$root_dir/t/mock_curl.pl";
     local $ENV{CLAUDE_CACERT} = "$root_dir/cacert.pem";
     my $cnt_file = "$root_dir/t/test_count_46.txt";
@@ -1462,6 +1470,10 @@ sub read_test_file {
 
 # Test 47: handle_mcp_command('remove <name>')
 {
+    my $tmp_dir = tempdir(CLEANUP => 1);
+    local $ENV{HOME} = $tmp_dir;
+    local $ENV{CLAUDE_MCP_CONFIG} = undef;
+    local $ENV{CLAUDE_MCP_SERVERS} = undef;
     local %main::MCP_SERVERS = (
         rem_srv => {
             name   => 'rem_srv',
@@ -1511,6 +1523,10 @@ sub read_test_file {
 
 # Test 48: handle_mcp_command('refresh')
 {
+    my $tmp_dir = tempdir(CLEANUP => 1);
+    local $ENV{HOME} = $tmp_dir;
+    local $ENV{CLAUDE_MCP_CONFIG} = undef;
+    local $ENV{CLAUDE_MCP_SERVERS} = undef;
     local $ENV{CLAUDE_CURL} = "$root_dir/t/mock_curl.pl";
     local $ENV{CLAUDE_CACERT} = "$root_dir/cacert.pem";
     my $cnt_file = "$root_dir/t/test_count_48.txt";

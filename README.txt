@@ -100,7 +100,7 @@ Settings and API keys are stored in "$HOME/.code-agent/env" (permissions 0600):
 - CLAUDE_MCP_SERVERS: Inline JSON string of MCP server configurations
 
 To view or edit: nano ~/.code-agent/env
-To change keys: rm -rf ~/.code-agent and run Install.command again.
+To change keys: rm ~/.code-agent/env and run Install.command again.
 Legacy ~/.code-agent-env and ~/.claude-agent-env files are automatically
 migrated into ~/.code-agent/env during installation.
 

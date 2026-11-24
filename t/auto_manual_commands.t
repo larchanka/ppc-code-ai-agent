@@ -244,7 +244,7 @@ unlink $test_file if -e $test_file;
     my $script = "$root_dir/code-agent.pl";
 
     my $cmd = qq{printf "/auto\\n/manual\\nexit\\n" | } .
-              qq{ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
+              qq{HOME="/nonexistent" ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
               qq{CLAUDE_CURL="$ENV{CLAUDE_CURL}" CLAUDE_CACERT="$ENV{CLAUDE_CACERT}" } .
               qq{$perl $script 2>&1};
     my $output = `$cmd`;
