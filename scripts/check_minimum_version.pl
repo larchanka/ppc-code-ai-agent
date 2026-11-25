@@ -50,6 +50,17 @@ for my $file (@files) {
         next;
     }
 
+    # 1. Pure-Perl static keyword and operator scanner
+    my ($ok, $reasons) = static_check_file($file, $target_num);
+    if (!$ok) {
+        warn "FAIL: $file requires Perl higher than $target_str:\n";
+        for my $r (@$reasons) {
+            warn "  Line $r->{line}: [$r->{rule}] $r->{text}\n";
+        }
+        $failed = 1;
+    }
+
+    # 2. In addition, when Perl::MinimumVersion is available, run PPI AST analysis
     if ($has_pmv) {
         my $pmv = Perl::MinimumVersion->new($file);
         if (!$pmv) {
@@ -67,18 +78,6 @@ for my $file (@files) {
                 # Attempt to run perlver --blame if available
                 system("perlver", "--blame", $file);
             }
-        } else {
-            # Passed
-        }
-    } else {
-        # Pure-Perl fallback static inspection
-        my ($ok, $reasons) = static_check_file($file, $target_num);
-        if (!$ok) {
-            warn "FAIL: $file requires Perl higher than $target_str:\n";
-            for my $r (@$reasons) {
-                warn "  Line $r->{line}: [$r->{rule}] $r->{text}\n";
-            }
-            $failed = 1;
         }
     }
 }
@@ -140,6 +139,17 @@ sub static_check_file {
                     text => "Explicit version requirement exceeds target ($t)",
                 };
             }
+            next;
+        }
+
+        # Check 'use feature' pragma (Perl 5.10+)
+        if ($line =~ /^\s*use\s+feature\b/i) {
+            chomp(my $t = $line);
+            push @violations, {
+                line => $line_no,
+                rule => 'feature_pragma',
+                text => "The 'feature' pragma requires Perl 5.10+ ($t)",
+            };
             next;
         }
 

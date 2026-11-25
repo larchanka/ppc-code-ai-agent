@@ -221,8 +221,8 @@ Quick-reference catalog of function and method signatures, arguments, and return
 ### Functions & Methods
 | Symbol | Signature | Line | Callers |
 | :--- | :--- | :--- | :--- |
-| `normalize_version` | `normalize_version()` | L94 | 2 |
-| `static_check_file` | `static_check_file()` | L111 | 1 |
+| `normalize_version` | `normalize_version()` | L93 | 2 |
+| `static_check_file` | `static_check_file()` | L110 | 1 |
 
 ## [`src/header.pl`](../src/header.pl)
 

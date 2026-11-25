@@ -54,6 +54,10 @@ jobs:
       - name: Display Perl version
         run: perl -v
 
+      - name: Install test runner dependencies for Perl 5.8
+        if: matrix.perl-version == '5.8'
+        run: cpanm --notest Test::More
+
       - name: Build code-agent.pl
         run: perl build.pl
 

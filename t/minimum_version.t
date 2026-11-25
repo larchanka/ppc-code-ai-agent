@@ -37,7 +37,7 @@ is($? >> 8, 0, "scripts/check_minimum_version.pl passes perl -c syntax check")
     # Case B: 'say' statement (Perl 5.10+)
     my $bad_say = File::Spec->catfile($tmp_dir, 'bad_say.pl');
     open $fh, '>', $bad_say or die $!;
-    print $fh "#!/usr/bin/perl\nuse strict;\nsay 'Hello World';\n";
+    print $fh "#!/usr/bin/perl\nuse strict;\nuse feature 'say';\nsay 'Hello World';\n";
     close $fh;
 
     my $out_b = `$^X "$checker_script" --perl 5.008006 "$bad_say" 2>&1`;
