@@ -138,6 +138,68 @@ sub load_env_file {
     init_retry_config();
 }
 
+# Normalizes an OpenAI / local endpoint URL:
+# - Trims whitespace
+# - Strips trailing slashes
+# - Ensures http:// or https:// prefix
+sub normalize_openai_endpoint {
+    my ($url) = @_;
+    return $url unless defined $url;
+    $url =~ s/^\s+|\s+$//g;
+    return $url if $url eq '';
+    $url =~ s{/+$}{};
+    if ($url !~ m{^https?://}i) {
+        $url = "http://$url";
+    }
+    return $url;
+}
+
+# Saves or updates key-value pairs in an env file (default ~/.code-agent/env).
+# Preserves existing unrelated variables and updates modified keys.
+sub save_env_vars {
+    my ($vars, $file) = @_;
+    return 0 unless ref($vars) eq 'HASH' && scalar(keys %$vars);
+    $file = get_env_file_path() unless defined $file;
+
+    (my $dir = $file) =~ s{/[^/]+$}{};
+    if (length $dir && !-d $dir) {
+        mkdir $dir, 0700;
+        chmod 0700, $dir;
+    }
+
+    my @lines;
+    my %updated;
+    if (open(my $rf, '<', $file)) {
+        while (my $line = <$rf>) {
+            my $matched = 0;
+            for my $k (keys %$vars) {
+                if ($line =~ /^\s*(?:export\s+)?\Q$k\E=/) {
+                    push @lines, "export $k=" . $vars->{$k} . "\n";
+                    $updated{$k} = 1;
+                    $matched = 1;
+                    last;
+                }
+            }
+            push @lines, $line unless $matched;
+        }
+        close $rf;
+    }
+
+    for my $k (keys %$vars) {
+        unless ($updated{$k}) {
+            push @lines, "export $k=" . $vars->{$k} . "\n";
+        }
+    }
+
+    if (open(my $wf, '>', $file)) {
+        print $wf @lines;
+        close $wf;
+        chmod 0600, $file;
+        return 1;
+    }
+    return 0;
+}
+
 # Theme-safe ANSI attributes (zero hardcoded colors; adapts to Terminal profile)
 our $COLOR_RESET     = "\x1b[0m";
 our $COLOR_USER      = "\x1b[34m";   # Default foreground (avoids \e[2m dim which blends into background on Leopard/Tiger)
@@ -180,7 +242,7 @@ END {
 my ($PROVIDER, $API_KEY, $MODEL, $API_URL, $ANTHROPIC_VERSION);
 
 # Application version.
-our $VERSION = '1.3.0';
+our $VERSION = '1.3.1';
 
 # Autonomous tool execution mode. When enabled, tools that normally require
 # confirmation (write_file, run_shell) execute immediately without prompting.

@@ -21,12 +21,13 @@ USING THE AGENT
 -------------------------
 Once started, you can chat with the agent or enter slash commands:
 - /new     : Start a new conversation (clears history and resets context)
+- /compact : Compact history by truncating older tool results for slow CPUs
 - /models  : View and switch available AI models
 - /ctx     : View or set max output tokens per response (default: 4k; e.g. /ctx 64k, /ctx 65536)
 - /mcp     : Manage remote MCP servers and tools (/mcp list, add, remove, refresh)
 - /claude  : Switch to Anthropic Claude
 - /gemini  : Switch to Google Gemini
-- /openai  : Switch to OpenAI-compatible endpoint (e.g. local LAN Ollama)
+- /openai  : Switch to OpenAI endpoint (interactively prompts for URL if unset; alias: /local)
 - /auto    : Enable autonomous mode (run tools without confirmation)
 - /manual  : Enable manual mode (require confirmation before file/shell actions)
 - /help    : Show available commands
@@ -81,6 +82,7 @@ WHAT'S INSIDE
 - code-agent.pl    : the agent itself (single Perl file, no dependencies)
 - build.pl         : build script to reassemble code-agent.pl from src/
 - src/             : 13 modular source files for the agent (including prompts.pl, mcp.pl)
+- scripts/         : verification and CI scripts (e.g. check_minimum_version.pl)
 - Install.command         : installer for PowerPC Mac OS X Tiger
 - modern-install.command  : installer for modern macOS (Intel/ARM) and Linux
 
@@ -96,6 +98,9 @@ Settings and API keys are stored in "$HOME/.code-agent/env" (permissions 0600):
 - CLAUDE_AUTO_MODE  : "1" for autonomous mode, "0" for manual confirmations
 - CLAUDE_MAX_RETRIES: Max retry attempts on LLM API errors (default: 3)
 - CLAUDE_RETRY_DELAY: Delay in seconds between API retries (default: 5)
+- CLAUDE_AUTO_COMPACT: Enable automatic tool result compaction (default: 1)
+- CLAUDE_COMPACT_THRESHOLD_CHARS: Chars threshold before auto-compaction (100000)
+- CLAUDE_COMPACT_THRESHOLD_TURNS: User turns threshold before auto-compaction (10)
 - CLAUDE_MCP_CONFIG : Path to MCP configuration JSON file
 - CLAUDE_MCP_SERVERS: Inline JSON string of MCP server configurations
 
@@ -109,7 +114,9 @@ BUILDING FROM SOURCE
 If modifying the agent source code in src/:
 1. Run "perl build.pl" to assemble code-agent.pl.
 2. Run "perl build.pl --check" to verify sync.
-3. Run "prove -v t/*.t" to run tests.
+3. Run "perl scripts/check_minimum_version.pl --perl 5.008006 code-agent.pl src/*.pl"
+   to verify strict Perl 5.8.6 syntax compatibility.
+4. Run "prove -v t/*.t" to run tests.
 Install.command also runs "perl build.pl" automatically when src/ is present.
 
 More detail, and how to build everything from source, is in the full

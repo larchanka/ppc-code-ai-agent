@@ -285,12 +285,28 @@ sub _maybe_save_gemini_key {
 # Return value: input string (raw bytes, without newline). undef on cancel.
 sub read_secret_or_cancel {
     my ($prompt) = @_;
-    cursor_show();
-    print $prompt;
+    return _read_prompt_or_cancel($prompt, 0);
+}
 
-    my $orig_stty = `stty -g`;
-    chomp $orig_stty;
-    system('stty', 'raw', '-echo', '-opost');
+# Read a single line of visible input with prompt, allowing Esc or Ctrl+C to cancel.
+# Echoes characters as typed. undef on cancel.
+sub read_line_or_cancel {
+    my ($prompt) = @_;
+    return _read_prompt_or_cancel($prompt, 1);
+}
+
+sub _read_prompt_or_cancel {
+    my ($prompt, $echo) = @_;
+    cursor_show();
+    print $prompt if defined $prompt;
+
+    my $is_tty = -t STDIN;
+    my $orig_stty;
+    if ($is_tty) {
+        $orig_stty = `stty -g 2>/dev/null`;
+        chomp $orig_stty if defined $orig_stty;
+        system('stty', 'raw', '-echo', '-opost');
+    }
 
     my $buf = '';
     my $cancelled = 0;
@@ -307,14 +323,20 @@ sub read_secret_or_cancel {
             last;
         }
         elsif ($b == 0x7f || $b == 0x08) {  # Backspace/Delete
-            substr($buf, -1, 1, '') if length($buf) > 0;
+            if (length($buf) > 0) {
+                substr($buf, -1, 1, '');
+                print "\b \b" if $echo && $is_tty;
+            }
         }
         elsif ($b >= 0x20) {
             $buf .= $ch;
+            print $ch if $echo && $is_tty;
         }
     }
 
-    system('stty', $orig_stty) if defined $orig_stty && $orig_stty ne '';
+    if ($is_tty && defined $orig_stty && $orig_stty ne '') {
+        system('stty', $orig_stty);
+    }
     print "\n";
     cursor_hide();
     return $cancelled ? undef : $buf;

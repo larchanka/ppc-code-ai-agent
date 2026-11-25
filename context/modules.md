@@ -34,6 +34,9 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `_validate_gemini_key($key)`: Performs a lightweight test query to verify validity.
 - `_maybe_save_gemini_key($key)`: Prompts the user to save credentials to `~/.code-agent/env`.
 - `read_secret_or_cancel($prompt)`: Prompts for sensitive input with echo disabled, supporting cancel via Escape or Ctrl+C.
+- `read_line_or_cancel($prompt)`: Prompts for visible single-line input with echo enabled, supporting cancel via Escape or Ctrl+C.
+- `normalize_openai_endpoint($url)`: Normalizes OpenAI / local base URL by trimming whitespace, stripping trailing slashes, and ensuring `http://` or `https://` prefix.
+- `save_env_vars($vars, [$file])`: Updates or appends key-value pairs in `~/.code-agent/env` (or custom path) preserving existing entries with `0600` file permissions.
 - `get_current_model()`: Returns active `$MODEL`.
 - `get_current_provider()`: Returns active `$PROVIDER`.
 - `get_current_api_url()`: Returns active `$API_URL`.
@@ -64,6 +67,12 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `get_current_session()`: Returns active `$CURRENT_SESSION`, lazily calling `init_session()` if undefined.
 - `archive_session($session)`: Lifecycle extension hook for future persistence / session resume before resetting context.
 - `handle_new_command($out_fh, $session)`: Command handler for `/new` slash command; archives existing session, initializes a fresh session, and prints confirmation.
+- `estimate_session_chars($session)`: Calculates total character footprint across all conversation messages in `$session`.
+- `count_user_turns($session)`: Counts total user interaction turns in `$session`.
+- `compact_tool_result_content($content, %opts)`: Truncates large tool result string while preserving head and tail lines with a clear omission note.
+- `compact_session_history($session, %opts)`: Compresses verbose tool results in turns older than `keep_turns` (default 4) while preserving strict `tool_use_id` / `tool_result` pairing.
+- `auto_compact_session_if_needed($session, %opts)`: Automatically executes compaction if session size exceeds configured character or turn limits.
+- `handle_compact_command($out_fh, $session, %opts)`: Command handler for `/compact` slash command; compacts older tool outputs and prints summary of saved bytes.
 
 #### Context & Instruction Management
 - `read_agents_file($path)`: Reads an `AGENTS.md` file safely, decoding UTF-8 and returning empty string on missing, unreadable, or non-regular files.
