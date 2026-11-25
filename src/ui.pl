@@ -193,31 +193,42 @@ sub show_banner {
     my ($out_fh) = @_;
     $out_fh ||= \*STDOUT;
 
-    my $c_yellow  = defined $COLOR_DIM   ? $COLOR_DIM   : '';
-    my $c_magenta = defined $COLOR_MODEL ? $COLOR_MODEL : '';
-    my $c_reset   = defined $COLOR_RESET ? $COLOR_RESET : '';
+    my $c_bold   = defined $STYLE_BOLD  ? $STYLE_BOLD  : '';
+    my $c_code   = defined $COLOR_CODE  ? $COLOR_CODE  : '';
+    my $c_gray   = defined $COLOR_GRAY  ? $COLOR_GRAY  : '';
+    my $c_reset  = defined $COLOR_RESET ? $COLOR_RESET : '';
+    my $c_bold_blue = $c_bold . $c_code;
 
-    my @banner_lines = (
-        [ "   _____          _       ", "  ___                    _   " ],
-        [ "  / ____|        | |      ", " / _ \\                  | |  " ],
-        [ " | |     ___   __| | ___  ", "/ /_\\ \\ __ _  ___ _ __  | |_ " ],
-        [ " | |    / _ \\ / _` |/ _ \\ ", "|  _  |/ _` |/ _ \\ '_ \\ | __|" ],
-        [ " | |___| (_) | (_| |  __/ ", "| | | | (_| |  __/ | | || |_ " ],
-        [ "  \\_____\\___/ \\__,_|\\___| ", "\\_| |_/\\__, |\\___|_| |_| \\__|" ],
-        [ "                          ", "        __/ |                " ],
-        [ "                          ", "       |___/                 " ],
-    );
+    # Detect if target handle has a UTF-8 layer (such as STDOUT configured with :encoding(UTF-8)).
+    # When printing to a UTF-8 handle, characters must be decoded characters.
+    # When printing to an unencoded raw handle (like in-memory scalar handles in tests),
+    # printing raw bytes avoids "Wide character in print" warnings and multibyte boundary splitting.
+    my $has_utf8_layer = 0;
+    eval {
+        my @layers = PerlIO::get_layers($out_fh);
+        $has_utf8_layer = 1 if grep { $_ eq 'utf8' || $_ =~ /^encoding\(/ } @layers;
+    };
 
-    for my $pair (@banner_lines) {
-        my ($code_part, $agent_part) = @$pair;
-        if ($code_part =~ /\S/) {
-            print $out_fh $c_yellow . $code_part . $c_reset . $c_magenta . $agent_part . $c_reset . "\n";
-        }
-        else {
-            print $out_fh $code_part . $c_magenta . $agent_part . $c_reset . "\n";
-        }
-    }
-    print $out_fh "\n";
+    my $mascot_body_bytes = "\xe2\x96\x88\xc2\xb7\xe2\x96\x88\xc2\xb7\xe2\x96\x88";
+    my $mascot_legs_bytes = " \xe2\x96\x80 \xe2\x96\x80 ";
+
+    my $mascot_body = $has_utf8_layer
+        ? eval { Encode::decode('UTF-8', $mascot_body_bytes) } || $mascot_body_bytes
+        : $mascot_body_bytes;
+    my $mascot_legs = $has_utf8_layer
+        ? eval { Encode::decode('UTF-8', $mascot_legs_bytes) } || $mascot_legs_bytes
+        : $mascot_legs_bytes;
+
+    my $ver_str = 'v' . (defined $VERSION && length $VERSION ? $VERSION : '1.3.0');
+
+    # Line 1: █·█·█  CodeAgent v1.3.0
+    print $out_fh $c_bold_blue . $mascot_body . $c_reset . "  "
+                . $c_bold_blue . "CodeAgent" . $c_reset . " "
+                . $c_gray . $ver_str . $c_reset . "\n";
+
+    # Line 2:  ▀ ▀   AI everywhere
+    print $out_fh $c_code . $mascot_legs . $c_reset . "  "
+                . $c_gray . "AI everywhere" . $c_reset . "\n\n";
 
     my $prov = (defined &get_current_provider ? get_current_provider() : undef) || $PROVIDER || 'unknown';
     my $mod  = (defined &get_current_model ? get_current_model() : undef) || $MODEL || 'unknown';
