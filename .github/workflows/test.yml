@@ -33,29 +33,40 @@ jobs:
         run: prove -I. t/*.t
 
   test:
-    name: Test (Perl ${{ matrix.perl-version }})
+    name: Build & Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        perl-version:
-          - '5.8'
-          - 'system'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Perl ${{ matrix.perl-version }}
-        if: matrix.perl-version != 'system'
+      - name: Display Perl version
+        run: perl -v
+
+      - name: Build code-agent.pl
+        run: perl build.pl
+
+      - name: Verify build sync
+        run: perl build.pl --check
+
+      - name: Run test suite
+        run: prove -I. t/*.t
+
+  test-perl-58:
+    name: Test (Perl 5.8)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Perl 5.8
         uses: shogo82148/actions-setup-perl@v1
         with:
-          perl-version: ${{ matrix.perl-version }}
+          perl-version: '5.8'
 
       - name: Display Perl version
         run: perl -v
 
       - name: Install test runner dependencies for Perl 5.8
-        if: matrix.perl-version == '5.8'
         run: cpanm --notest Test::More
 
       - name: Build code-agent.pl
