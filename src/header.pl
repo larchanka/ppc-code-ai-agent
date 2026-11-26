@@ -210,6 +210,7 @@ our $STYLE_BOLD      = "\x1b[1m";
 our $STYLE_UNDERLINE = "\x1b[4m";
 our $COLOR_HEADER    = "\x1b[1;35m"; # Bold + Magenta for headers
 our $COLOR_CODE      = "\x1b[34m";   # Blue for inline & block code
+our $COLOR_GRAY      = "\x1b[90m";   # Bright black / dark gray
 if (!-t STDOUT || exists $ENV{NO_COLOR}) {
     $COLOR_RESET     = '';
     $COLOR_USER      = '';
@@ -220,6 +221,7 @@ if (!-t STDOUT || exists $ENV{NO_COLOR}) {
     $STYLE_UNDERLINE = '';
     $COLOR_HEADER    = '';
     $COLOR_CODE      = '';
+    $COLOR_GRAY      = '';
 }
 
 sub cursor_hide {

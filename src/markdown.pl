@@ -561,6 +561,7 @@ sub _init_standalone_markdown_colors {
         $STYLE_UNDERLINE = '';
         $COLOR_HEADER    = '';
         $COLOR_CODE      = '';
+        $COLOR_GRAY      = '';
     }
     else {
         $COLOR_RESET     = "\x1b[0m";
@@ -570,6 +571,7 @@ sub _init_standalone_markdown_colors {
         $STYLE_UNDERLINE = "\x1b[4m";
         $COLOR_HEADER    = "\x1b[1;35m";
         $COLOR_CODE      = "\x1b[34m";
+        $COLOR_GRAY      = "\x1b[90m";
     }
 }
 
