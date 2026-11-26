@@ -1,7 +1,22 @@
-# Task Breakdown: Stability, Performance & Ergonomics Improvements
+# Task Breakdown: Session Statistics (`/stats` Command)
 
-- [x] 1. Pure-Perl JSON Edge-Case Hardening & Unit Tests (`src/json.pl`, `t/json.t`, `build.pl`)
-- [x] 2. Enforce Perl 5.8.6 Compatibility in CI (`.github/workflows/test.yml`)
-- [x] 3. Context & Token Budgeting for Slow CPUs (`src/session.pl`, `src/main.pl`, `t/compact_context.t`)
-- [x] 4. Interactive Local/OpenAI Endpoint Configuration (`src/main.pl`, `t/openai_switch.t`)
-- [x] 5. Documentation, Build & Context Graph Synchronization (`build.pl`, `code-agent.pl`, `context/*`)
+- [x] 1. Session Stats State & Accessors (`src/session.pl`)
+  - [x] Initialize `stats` hash in `init_session`
+  - [x] Add `get_session_stats`, `record_session_tokens`, `record_session_tool_call`, `record_session_subagent`
+  - [x] Verify reset behavior in `handle_new_command`
+- [x] 2. Multi-Provider Token Usage Extraction (`src/providers.pl`)
+  - [x] Implement `extract_token_usage` for Anthropic, OpenAI, and Gemini
+  - [x] Implement `record_api_response_stats`
+- [x] 3. Instrument Tool Execution & Sub-Agent Aggregation (`src/tools.pl`, `src/main.pl`)
+  - [x] Record tool calls in `run_tool`
+  - [x] Record subagent launch and tokens in `run_subagent`
+  - [x] Record main conversation turn tokens in `src/main.pl`
+- [x] 4. Implement `/stats` Command & Terminal Formatting (`src/session.pl`, `src/main.pl`, `t/stats_command.t`)
+  - [x] Implement `format_session_stats` and `handle_stats_command`
+  - [x] Add `/stats` to `show_help` and command loop in `src/main.pl`
+  - [x] Write comprehensive unit and integration tests in `t/stats_command.t`
+- [x] 5. Build Reassembly & Compatibility Verification (`code-agent.pl`, `build.pl`, `context/*`)
+  - [x] Reassemble standalone binary via `perl build.pl` and check with `perl build.pl --check`
+  - [x] Run Perl 5.8.6 syntax compatibility verification with `scripts/check_minimum_version.pl`
+  - [x] Run full test suite with `prove -I. t/*.t`
+  - [x] Refresh codebase context and symbol graphs
