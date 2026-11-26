@@ -5,11 +5,22 @@
 my $FILE_EDITING_RULES = <<'EOS';
 <file_editing>
 - Always read_file (supports 1-based start_line..end_line slices) before editing to verify exact line numbers.
-- Prefer edit_file over write_file (1-based inclusive start_line..end_line) for updating existing files; use write_file mainly for new files.
-- In edit_file: set end_line = start_line - 1 to insert without deleting; set content = "" to delete lines.
-- When making multiple edits to one file, edit bottom-to-top (highest line numbers first) or re-read so line shifts do not corrupt code.
+- Prefer edit_file over write_file for updating existing files; use write_file mainly for new files.
+- edit_file supports `target` matching: specify `target` (exact text) with `replacement` (or `content`) for content-based editing, or combine with line numbers to verify content and prevent line-drift corruption.
+- In line-based edit_file: set end_line = start_line - 1 to insert without deleting; set content = "" to delete lines.
+- When making multiple line-number edits without target, edit bottom-to-top (highest line numbers first) or re-read between edits.
 - Make surgical changes matching existing code style.
 </file_editing>
+EOS
+
+my $TOOL_BOUNDARIES_RULES = <<'EOS';
+<tool_boundaries>
+- Tools are strictly limited to: read_file, write_file, edit_file, list_dir, run_shell, invoke_subagent (plus remote MCP tools if active).
+- No message-passing tools (send_message), background processes, task queues, or worker swarms exist. Subagents run synchronously to completion.
+- Subagents cannot invoke subagents (recursive subagents are blocked).
+- 'plan' subagents are strictly read-only (read_file, list_dir only); they cannot write or edit files or run shell commands. If an external skill asks a plan subagent to produce or write files (such as tasks/plan.md), the parent coordinator agent must write them.
+- When following external skills or workflows (e.g. agent-loop), adapt their instructions to these local synchronous tool boundaries rather than attempting unsupported commands.
+</tool_boundaries>
 EOS
 
 my $TIGER_ENV_RULES = <<'EOS';
@@ -28,7 +39,7 @@ my $SECURITY_RULES = <<'EOS';
 </security>
 EOS
 
-our $SYSTEM_PROMPT = <<'EOS' . "\n" . $FILE_EDITING_RULES . "\n" . $TIGER_ENV_RULES . "\n" . $SECURITY_RULES;
+our $SYSTEM_PROMPT = <<'EOS' . "\n" . $FILE_EDITING_RULES . "\n" . $TOOL_BOUNDARIES_RULES . "\n" . $TIGER_ENV_RULES . "\n" . $SECURITY_RULES;
 You are a concise coding agent on a PowerPC G4 Mac (Mac OS X 10.4 Tiger).
 Tools: read_file, write_file, edit_file, list_dir, run_shell, invoke_subagent.
 Reply in the user's language. Keep output brief and 80-col terminal-friendly.
@@ -41,7 +52,7 @@ Reply in the user's language. Keep output brief and 80-col terminal-friendly.
 EOS
 
 # Default prompt for 'plan' sub-agents (strictly read-only)
-our $SUBAGENT_PLAN_PROMPT = <<'EOS' . "\n" . $SECURITY_RULES;
+our $SUBAGENT_PLAN_PROMPT = <<'EOS' . "\n" . $TOOL_BOUNDARIES_RULES . "\n" . $SECURITY_RULES;
 You are a read-only 'plan' sub-agent on Mac OS X 10.4 Tiger (PowerPC).
 Tools: read_file, list_dir only (no file edits or shell commands).
 
@@ -49,17 +60,19 @@ Tools: read_file, list_dir only (no file edits or shell commands).
 - Batch independent read_file and list_dir calls in a single turn to conserve your turn budget.
 - Use start_line and end_line in read_file to inspect large files efficiently.
 - Return a concise, actionable summary citing exact file paths and 1-based line numbers.
+- Always provide a non-empty final summary before completing. You cannot write files; return any plans or task breakdowns as text for the parent agent.
 </turn_economy>
 EOS
 
 # Default prompt for 'build' sub-agents (implementation with full tools)
-our $SUBAGENT_BUILD_PROMPT = <<'EOS' . "\n" . $FILE_EDITING_RULES . "\n" . $TIGER_ENV_RULES . "\n" . $SECURITY_RULES;
+our $SUBAGENT_BUILD_PROMPT = <<'EOS' . "\n" . $FILE_EDITING_RULES . "\n" . $TOOL_BOUNDARIES_RULES . "\n" . $TIGER_ENV_RULES . "\n" . $SECURITY_RULES;
 You are a 'build' implementation sub-agent on Mac OS X 10.4 Tiger (PowerPC).
 Tools: read_file, write_file, edit_file, list_dir, run_shell.
 
 <turn_economy>
 - Batch independent tool calls in one turn to conserve your turn budget.
 - Chain dependent shell commands with `&&` in a single run_shell call to save turns and user y/N confirmations.
+- Always provide a concise, non-empty final summary of the changes made and tests passed upon completion.
 </turn_economy>
 EOS
 

@@ -288,17 +288,33 @@ close $tf;
     like($out, qr/reached maximum turn limit \(50\)/, "Timeout message returned when max turns reached");
 }
 
+# Test Case 6f: Subagent completes without returning text summary
+{
+    $ENV{MOCK_CURL_RESPONSE} = '{"content":[{"type":"text","text":""}]}';
+    my $out = run_subagent("Empty summary task", "plan");
+    is($out, "(Sub-agent completed without returning text summary)",
+        "Explicit notice returned when subagent completes with empty text summary");
+
+    $ENV{MOCK_CURL_RESPONSE} = '{"content":[{"type":"text","text":"   \n\t  "}]}';
+    my $out_ws = run_subagent("Whitespace summary task", "plan");
+    is($out_ws, "(Sub-agent completed without returning text summary)",
+        "Explicit notice returned when subagent completes with whitespace-only text summary");
+}
+
 # ==================================================================
 # 7. Prompt guidelines for build sub-agent
 # ==================================================================
 {
-    our ($SUBAGENT_BUILD_PROMPT, $SUBAGENT_PLAN_PROMPT);
+    our ($SUBAGENT_BUILD_PROMPT, $SUBAGENT_PLAN_PROMPT, $SYSTEM_PROMPT);
     ok(defined $SUBAGENT_BUILD_PROMPT, "SUBAGENT_BUILD_PROMPT is defined");
     like($SUBAGENT_BUILD_PROMPT, qr/chain.*run_shell/i, "SUBAGENT_BUILD_PROMPT instructs command chaining");
     like($SUBAGENT_BUILD_PROMPT, qr/<turn_economy>.*<\/turn_economy>/s, "SUBAGENT_BUILD_PROMPT includes <turn_economy> section");
     like($SUBAGENT_BUILD_PROMPT, qr/<file_editing>.*<\/file_editing>/s, "SUBAGENT_BUILD_PROMPT includes shared <file_editing> section");
+    like($SUBAGENT_BUILD_PROMPT, qr/<tool_boundaries>.*<\/tool_boundaries>/s, "SUBAGENT_BUILD_PROMPT includes <tool_boundaries> section");
     like($SUBAGENT_BUILD_PROMPT, qr/<tiger_env>.*<\/tiger_env>/s, "SUBAGENT_BUILD_PROMPT includes shared <tiger_env> section");
     like($SUBAGENT_PLAN_PROMPT, qr/<turn_economy>.*<\/turn_economy>/s, "SUBAGENT_PLAN_PROMPT includes <turn_economy> section");
+    like($SUBAGENT_PLAN_PROMPT, qr/<tool_boundaries>.*<\/tool_boundaries>/s, "SUBAGENT_PLAN_PROMPT includes <tool_boundaries> section");
+    like($SYSTEM_PROMPT, qr/<tool_boundaries>.*<\/tool_boundaries>/s, "SYSTEM_PROMPT includes <tool_boundaries> section");
 }
 
 # ==================================================================
