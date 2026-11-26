@@ -45,14 +45,107 @@ sub generate_session_id {
 sub init_session {
     my ($id) = @_;
     $id = generate_session_id() unless defined $id && length $id;
+    my $now = time();
     $CURRENT_SESSION = {
         id         => $id,
-        created_at => time(),
+        created_at => $now,
         provider   => $PROVIDER,
         model      => $MODEL,
         messages   => [],
+        stats      => {
+            prompt_tokens     => 0,
+            completion_tokens => 0,
+            total_tokens      => 0,
+            tool_calls        => 0,
+            subagents         => 0,
+            tool_counts       => {},
+            subagent_counts   => {},
+            api_calls         => 0,
+            start_time        => $now,
+        },
     };
     return $CURRENT_SESSION;
+}
+
+sub get_session_stats {
+    my ($session) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return undef unless defined $session && ref($session) eq 'HASH';
+
+    if (!defined $session->{stats} || ref($session->{stats}) ne 'HASH') {
+        my $now = defined $session->{created_at} ? $session->{created_at} : time();
+        $session->{stats} = {
+            prompt_tokens     => 0,
+            completion_tokens => 0,
+            total_tokens      => 0,
+            tool_calls        => 0,
+            subagents         => 0,
+            tool_counts       => {},
+            subagent_counts   => {},
+            api_calls         => 0,
+            start_time        => $now,
+        };
+    }
+    return $session->{stats};
+}
+
+sub record_session_tokens {
+    my ($session, $prompt, $completion, $total);
+    if (@_ && ref($_[0]) eq 'HASH') {
+        ($session, $prompt, $completion, $total) = @_;
+    } else {
+        ($prompt, $completion, $total, $session) = @_;
+    }
+    my $stats = get_session_stats($session);
+    return undef unless defined $stats;
+
+    $stats->{api_calls}++;
+    $prompt = 0 unless defined $prompt && $prompt =~ /^\d+$/;
+    $completion = 0 unless defined $completion && $completion =~ /^\d+$/;
+    if (!defined $total || $total !~ /^\d+$/) {
+        $total = $prompt + $completion;
+    }
+    $stats->{prompt_tokens}     += $prompt;
+    $stats->{completion_tokens} += $completion;
+    $stats->{total_tokens}      += $total;
+
+    return $stats;
+}
+
+sub record_session_tool_call {
+    my ($session, $tool_name);
+    if (@_ && ref($_[0]) eq 'HASH') {
+        ($session, $tool_name) = @_;
+    } else {
+        ($tool_name, $session) = @_;
+    }
+    my $stats = get_session_stats($session);
+    return undef unless defined $stats;
+
+    $stats->{tool_calls}++;
+    if (defined $tool_name && length $tool_name) {
+        $stats->{tool_counts} ||= {};
+        $stats->{tool_counts}{$tool_name} = ($stats->{tool_counts}{$tool_name} || 0) + 1;
+    }
+    return $stats;
+}
+
+sub record_session_subagent {
+    my ($session, $type);
+    if (@_ && ref($_[0]) eq 'HASH') {
+        ($session, $type) = @_;
+    } else {
+        ($type, $session) = @_;
+    }
+    my $stats = get_session_stats($session);
+    return undef unless defined $stats;
+
+    $stats->{subagents}++;
+    if (defined $type && length $type) {
+        $stats->{subagent_counts} ||= {};
+        $stats->{subagent_counts}{$type} = ($stats->{subagent_counts}{$type} || 0) + 1;
+    }
+    return $stats;
 }
 
 sub get_current_session {
@@ -86,6 +179,7 @@ sub show_help {
     $out_fh ||= \*STDOUT;
     print $out_fh "\nAvailable commands:\n";
     print $out_fh "  /new     - Start a new conversation (clears chat history)\n";
+    print $out_fh "  /stats   - Show current session statistics and token usage\n";
     print $out_fh "  /models  - View and switch available AI models\n";
     print $out_fh "  /ctx     - View or set max output tokens per response (e.g. /ctx 64k)\n";
     print $out_fh "  /compact - Compact conversation history to free context and memory\n";
@@ -370,6 +464,147 @@ sub handle_compact_command {
         print $out_fh "Session history is already compact (no older tool outputs to truncate).\n";
     }
     return $stats;
+}
+
+sub _commify {
+    my ($num) = @_;
+    return '0' unless defined $num && length($num);
+    my $val = "$num";
+    1 while $val =~ s/^(-?\d+)(\d{3})/$1,$2/;
+    return $val;
+}
+
+sub format_uptime {
+    my ($seconds) = @_;
+    $seconds = 0 unless defined $seconds && $seconds =~ /^-?\d+$/;
+    $seconds = 0 if $seconds < 0;
+
+    my $s = $seconds % 60;
+    my $m = int($seconds / 60) % 60;
+    my $h = int($seconds / 3600);
+
+    if ($h > 0) {
+        return sprintf("%dh %dm %ds", $h, $m, $s);
+    }
+    elsif ($m > 0) {
+        return sprintf("%dm %ds", $m, $s);
+    }
+    return sprintf("%ds", $s);
+}
+
+sub get_context_window_size {
+    my ($provider) = @_;
+    $provider = (defined &get_current_provider ? get_current_provider() : undef) || $PROVIDER || 'anthropic'
+        unless defined $provider && length($provider);
+    $provider = lc($provider);
+
+    if ($provider eq 'gemini') {
+        return 1048576; # 1m
+    }
+    elsif ($provider eq 'openai') {
+        return 131072;  # 128k
+    }
+    elsif ($provider eq 'anthropic') {
+        return 204800;  # 200k
+    }
+    return 204800;
+}
+
+sub format_session_stats {
+    my ($session) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    $session = get_current_session() unless defined $session;
+    return '' unless defined $session && ref($session) eq 'HASH';
+
+    my $stats = get_session_stats($session);
+    my $now = time();
+    my $start_time = defined $stats->{start_time} ? $stats->{start_time}
+                   : (defined $session->{created_at} ? $session->{created_at} : $now);
+    my $uptime_sec = $now - $start_time;
+    my $uptime_str = format_uptime($uptime_sec);
+
+    my $prov = defined $session->{provider} ? $session->{provider}
+             : ((defined &get_current_provider ? get_current_provider() : undef) || $PROVIDER || 'anthropic');
+    my $mod  = defined $session->{model} ? $session->{model}
+             : ((defined &get_current_model ? get_current_model() : undef) || $MODEL || 'default');
+
+    my $msgs = ref($session->{messages}) eq 'ARRAY' ? $session->{messages} : [];
+    my $msg_count = scalar(@$msgs);
+    my $char_count = estimate_session_chars($session);
+    my $est_tokens = int($char_count / 4);
+
+    my $window_size = get_context_window_size($prov);
+    my $window_fmt  = format_context_size($window_size);
+    my $util_pct    = ($window_size > 0) ? (($est_tokens / $window_size) * 100) : 0;
+
+    my $max_tokens  = defined &get_max_tokens ? get_max_tokens() : $MAX_TOKENS;
+    my $max_fmt     = format_context_size($max_tokens);
+
+    my $c_reset  = defined $COLOR_RESET  ? $COLOR_RESET  : '';
+    my $c_hdr    = defined $COLOR_HEADER ? $COLOR_HEADER : '';
+
+    my @lines;
+    push @lines, $c_hdr . "Session Statistics:" . $c_reset;
+    push @lines, sprintf("  Session ID:      %s", $session->{id} || 'unknown');
+    push @lines, sprintf("  Provider / Model: %s / %s", $prov, $mod);
+    push @lines, sprintf("  Uptime:          %s", $uptime_str);
+    push @lines, "";
+
+    push @lines, $c_hdr . "Active Context:" . $c_reset;
+    push @lines, sprintf("  Active Messages:    %s", _commify($msg_count));
+    push @lines, sprintf("  Active Characters:  %s", _commify($char_count));
+    push @lines, sprintf("  Estimated Tokens:   %s (~4 chars/token)", _commify($est_tokens));
+    push @lines, sprintf("  Context Window:     %s (%s) [utilization: %.2f%%]",
+        _commify($window_size), $window_fmt, $util_pct);
+    push @lines, sprintf("  Max Output Tokens:  %s (%s)", _commify($max_tokens), $max_fmt);
+    push @lines, "";
+
+    push @lines, $c_hdr . "Cumulative Token Usage:" . $c_reset;
+    push @lines, sprintf("  API Calls:         %s", _commify($stats->{api_calls}));
+    push @lines, sprintf("  Prompt Tokens:     %s", _commify($stats->{prompt_tokens}));
+    push @lines, sprintf("  Completion Tokens: %s", _commify($stats->{completion_tokens}));
+    push @lines, sprintf("  Total Tokens:      %s", _commify($stats->{total_tokens}));
+    push @lines, "";
+
+    my $tool_calls = $stats->{tool_calls} || 0;
+    if ($tool_calls == 0) {
+        push @lines, $c_hdr . "Tool Calls:" . $c_reset . " 0 (none)";
+    }
+    else {
+        push @lines, $c_hdr . "Tool Calls:" . $c_reset . sprintf(" %s", _commify($tool_calls));
+        my $counts = ref($stats->{tool_counts}) eq 'HASH' ? $stats->{tool_counts} : {};
+        my @sorted_tools = sort { ($counts->{$b} || 0) <=> ($counts->{$a} || 0) || $a cmp $b } keys %$counts;
+        for my $tool (@sorted_tools) {
+            push @lines, sprintf("  - %s: %s", $tool, _commify($counts->{$tool}));
+        }
+    }
+    push @lines, "";
+
+    my $subagents = $stats->{subagents} || 0;
+    if ($subagents == 0) {
+        push @lines, $c_hdr . "Sub-Agents:" . $c_reset . " 0 (none)";
+    }
+    else {
+        push @lines, $c_hdr . "Sub-Agents:" . $c_reset . sprintf(" %s", _commify($subagents));
+        my $sa_counts = ref($stats->{subagent_counts}) eq 'HASH' ? $stats->{subagent_counts} : {};
+        my @sorted_sa = sort { ($sa_counts->{$b} || 0) <=> ($sa_counts->{$a} || 0) || $a cmp $b } keys %$sa_counts;
+        for my $type (@sorted_sa) {
+            push @lines, sprintf("  - %s: %s", $type, _commify($sa_counts->{$type}));
+        }
+    }
+
+    return join("\n", @lines);
+}
+
+sub handle_stats_command {
+    my ($out_fh, $session) = @_;
+    $out_fh ||= \*STDOUT;
+    $session = $CURRENT_SESSION unless defined $session;
+    $session = get_current_session() unless defined $session;
+
+    my $formatted = format_session_stats($session);
+    print $out_fh $formatted . "\n";
+    return 1;
 }
 
 

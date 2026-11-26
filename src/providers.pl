@@ -407,6 +407,72 @@ sub has_thinking_block {
     return 0;
 }
 
+# --- Token usage extraction & session recording ---
+
+sub _to_int {
+    my ($val) = @_;
+    return (defined $val && $val =~ /^\d+$/) ? (0 + $val) : 0;
+}
+
+sub _make_token_usage {
+    my ($p_raw, $c_raw, $t_raw) = @_;
+    my $p = _to_int($p_raw);
+    my $c = _to_int($c_raw);
+    my $t = (defined $t_raw && $t_raw =~ /^\d+$/) ? (0 + $t_raw) : ($p + $c);
+    return {
+        prompt_tokens     => $p,
+        completion_tokens => $c,
+        total_tokens      => $t,
+    };
+}
+
+sub extract_token_usage {
+    my ($resp) = @_;
+    return undef unless defined $resp && ref($resp) eq 'HASH';
+
+    if (defined $resp->{usage} && ref($resp->{usage}) eq 'HASH') {
+        my $u = $resp->{usage};
+        if (defined $u->{prompt_tokens} || defined $u->{completion_tokens}) {
+            return _make_token_usage($u->{prompt_tokens}, $u->{completion_tokens}, $u->{total_tokens});
+        }
+        elsif (defined $u->{input_tokens} || defined $u->{output_tokens}) {
+            return _make_token_usage($u->{input_tokens}, $u->{output_tokens}, $u->{total_tokens});
+        }
+        elsif (defined $u->{total_tokens} && $u->{total_tokens} =~ /^\d+$/) {
+            return _make_token_usage(0, 0, $u->{total_tokens});
+        }
+    }
+    elsif (defined $resp->{usageMetadata} && ref($resp->{usageMetadata}) eq 'HASH') {
+        my $um = $resp->{usageMetadata};
+        if (defined $um->{promptTokenCount} || defined $um->{candidatesTokenCount} || defined $um->{totalTokenCount}) {
+            return _make_token_usage($um->{promptTokenCount}, $um->{candidatesTokenCount}, $um->{totalTokenCount});
+        }
+    }
+
+    return undef;
+}
+
+sub record_api_response_stats {
+    my ($resp, $session) = @_;
+    return undef unless defined $resp;
+
+    # Positional tolerance: ($session, $resp)
+    if (ref($resp) eq 'HASH' && exists $resp->{stats} && !exists $resp->{usage} && !exists $resp->{usageMetadata}) {
+        ($session, $resp) = ($resp, $session);
+        return undef unless defined $resp;
+    }
+    $session = $CURRENT_SESSION unless defined $session;
+
+    my $usage = extract_token_usage($resp);
+    if ($usage) {
+        return record_session_tokens($session, $usage->{prompt_tokens}, $usage->{completion_tokens}, $usage->{total_tokens});
+    }
+    elsif (ref($resp) eq 'HASH') {
+        return record_session_tokens($session, 0, 0, 0);
+    }
+    return undef;
+}
+
 # --- Provider model discovery & schema adapters ---
 sub fetch_models {
     my ($provider) = @_;

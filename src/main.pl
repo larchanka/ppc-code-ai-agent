@@ -130,6 +130,12 @@ while (1) {
         next;
     }
 
+    if ($input =~ m{^/stats\b}i) {
+        my $session = get_current_session();
+        handle_stats_command(\*STDOUT, $session);
+        next;
+    }
+
     if ($input eq '/models') {
         handle_models_command();
         next;
@@ -225,6 +231,8 @@ while (1) {
             print $@;
             last;
         }
+
+        record_api_response_stats($resp, $session);
 
         my @content_blocks = eval { parse_response($resp) };
         if ($@) {

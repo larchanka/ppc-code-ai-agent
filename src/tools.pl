@@ -363,6 +363,8 @@ sub format_tool_result {
 sub run_tool {
     my ($name, $input) = @_;
 
+    record_session_tool_call($name);
+
     # The return value of run_tool is not shown directly to user, but sent to the model
     # as tool_result log. The user only directly sees the confirm() prompt.
     if ($name eq 'read_file') {
@@ -567,6 +569,8 @@ sub run_subagent {
     $subagent_type = 'build' unless defined $subagent_type && length $subagent_type;
     $subagent_type = 'build' unless $subagent_type eq 'plan' || $subagent_type eq 'build';
 
+    record_session_subagent($subagent_type);
+
     my $max_turns = 50;
     my $tools_ref = get_subagent_tools($subagent_type);
     my $effective_prompt = get_subagent_system_prompt($subagent_type, $max_turns);
@@ -597,6 +601,8 @@ sub run_subagent {
             print format_subagent_finish($subagent_type, $turn, "Failed: API error");
             return $err;
         }
+
+        record_api_response_stats($resp);
 
         my @content_blocks = eval { parse_response($resp) };
         if ($@) {
