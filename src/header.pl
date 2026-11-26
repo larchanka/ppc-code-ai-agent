@@ -14,6 +14,7 @@ use warnings;
 use utf8;
 use Encode qw(decode encode FB_DEFAULT);
 use POSIX qw(WNOHANG);
+use File::Temp qw(tempfile tempdir);
 
 # Explicitly handle screen output as UTF-8.
 binmode STDOUT, ':encoding(UTF-8)';
@@ -95,11 +96,21 @@ sub get_max_retries {
 }
 
 sub get_retry_delay {
+    my ($attempt) = @_;
+    my $base = $RETRY_DELAY;
     if (defined $ENV{CLAUDE_RETRY_DELAY} && $ENV{CLAUDE_RETRY_DELAY} =~ /^\s*(-?\d+(?:\.\d+)?)\s*$/) {
         my $val = $1 + 0;
-        return $val < 0 ? 0 : $val;
+        $base = $val < 0 ? 0 : $val;
     }
-    return $RETRY_DELAY;
+    return $base unless defined $attempt && $attempt > 0;
+    return 0 if $base == 0;
+
+    my $mult = 1;
+    for (my $i = 1; $i < $attempt; $i++) {
+        $mult *= 2;
+    }
+    my $delay = $base * $mult;
+    return $delay > 60 ? 60 : $delay;
 }
 
 sub init_retry_config {
