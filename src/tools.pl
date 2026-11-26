@@ -27,7 +27,7 @@ our @TOOLS = (
     },
     {
         name => 'edit_file',
-        description => 'Edit a range of lines in a file (1-based, inclusive)',
+        description => 'Edit a range of lines in a file (1-based, inclusive) or replace matching target text',
         input_schema => {
             type => 'object',
             properties => {
@@ -35,6 +35,7 @@ our @TOOLS = (
                 start_line => { type => 'integer', description => '1-based start line number (inclusive)' },
                 end_line   => { type => 'integer', description => '1-based end line number (inclusive)' },
                 content    => { type => 'string', description => 'Replacement content (empty string to delete lines)' },
+                target     => { type => 'string', description => 'Exact target text to replace or verify at specified lines' },
             },
             required => ['path', 'start_line', 'end_line', 'content'],
         },
@@ -402,9 +403,56 @@ sub run_tool {
     }
     elsif ($name eq 'edit_file') {
         my $path = $input->{path};
+        return "Error: missing required 'path' parameter" unless defined $path && length $path;
+
         my $content = defined $input->{content} ? $input->{content}
                     : defined $input->{replacement} ? $input->{replacement}
                     : '';
+        my $target = $input->{target};
+
+        open(my $fh, '<:encoding(UTF-8)', $path) or return "Error: cannot open $path: $!";
+        my @lines = <$fh>;
+        close $fh;
+
+        my $total = scalar @lines;
+
+        # Mode A: content-targeted replacement (when target is specified without line numbers)
+        if (defined $target && length $target && (!defined $input->{start_line} || !defined $input->{end_line})) {
+            my $raw_text = join('', @lines);
+            my $norm_raw = $raw_text;
+            my $norm_target = $target;
+            $norm_raw =~ s/\r\n/\n/g;
+            $norm_target =~ s/\r\n/\n/g;
+
+            my $pos = index($norm_raw, $norm_target);
+            if ($pos < 0) {
+                return "Error: target text not found in '$path'";
+            }
+            my $second_pos = index($norm_raw, $norm_target, $pos + length($norm_target));
+            if ($second_pos >= 0) {
+                my $count = 0;
+                my $p = 0;
+                while (($p = index($norm_raw, $norm_target, $p)) >= 0) {
+                    $count++;
+                    $p += length($norm_target);
+                }
+                return "Error: target text appears $count times in '$path'. Please provide more surrounding lines to make target unique.";
+            }
+
+            unless (confirm_tool("Edit file '$path' (target replace)?")) {
+                return "Cancelled by user.";
+            }
+
+            substr($norm_raw, $pos, length($norm_target), $content);
+
+            open(my $out_fh, '>:encoding(UTF-8)', $path) or return "Error: cannot write $path: $!";
+            print $out_fh $norm_raw;
+            close $out_fh;
+
+            return "Edit complete: $path";
+        }
+
+        # Mode B: line-range editing (with optional target verification & auto-relocation)
         my $start_line = defined $input->{start_line} ? int($input->{start_line}) : 1;
         my $end_line   = defined $input->{end_line}   ? int($input->{end_line})   : 0;
 
@@ -412,16 +460,53 @@ sub run_tool {
             return "Error: invalid start_line ($start_line): must be >= 1";
         }
 
-        open(my $fh, '<:encoding(UTF-8)', $path) or return "Error: cannot open $path: $!";
-        my @lines = <$fh>;
-        close $fh;
-
-        my $total = scalar @lines;
         if ($start_line > $total + 1) {
             return "Error: start_line ($start_line) exceeds total lines ($total) + 1";
         }
         if ($end_line < $start_line - 1) {
             return "Error: end_line ($end_line) cannot be less than start_line - 1 (" . ($start_line - 1) . ")";
+        }
+
+        if (defined $target && length $target) {
+            my $expected_slice = '';
+            if ($end_line >= $start_line && $start_line <= $total) {
+                my $clamped_end = $end_line > $total ? $total : $end_line;
+                $expected_slice = join('', @lines[ ($start_line - 1) .. ($clamped_end - 1) ]);
+            }
+
+            my $norm_slice = $expected_slice;
+            my $norm_target = $target;
+            $norm_slice =~ s/\r\n/\n/g;
+            $norm_target =~ s/\r\n/\n/g;
+
+            if ($norm_slice ne $norm_target && $norm_slice ne "$norm_target\n") {
+                # Check if target uniquely exists elsewhere in the file (recovering from line drift)
+                my $raw_text = join('', @lines);
+                $raw_text =~ s/\r\n/\n/g;
+                my $pos = index($raw_text, $norm_target);
+                if ($pos >= 0) {
+                    my $second_pos = index($raw_text, $norm_target, $pos + length($norm_target));
+                    if ($second_pos < 0) {
+                        # Unique match found elsewhere in file! Auto-relocate
+                        my $before = substr($raw_text, 0, $pos);
+                        my $match_str = substr($raw_text, $pos, length($norm_target));
+                        my $new_start = ($before =~ tr/\n//) + 1;
+                        my $match_newlines = ($match_str =~ tr/\n//);
+                        my $new_end = $new_start + $match_newlines;
+                        $new_end-- if $match_str =~ /\n\z/;
+                        $new_end = $new_start if $new_end < $new_start;
+
+                        $start_line = $new_start;
+                        $end_line   = $new_end;
+                    }
+                    else {
+                        return "Error: target text does not match lines $start_line-$end_line in '$path', and target is ambiguous (appears multiple times in file).";
+                    }
+                }
+                else {
+                    return "Error: target text does not match lines $start_line-$end_line in '$path'.\nExpected: $target\nFound: $expected_slice";
+                }
+            }
         }
 
         $end_line = $total if $end_line > $total;
@@ -582,6 +667,10 @@ sub run_subagent {
             $final_text = "Sub-agent reached maximum turn limit ($max_turns). Last output: " . ($turn_text || '(no text output)');
             last;
         }
+    }
+
+    if (!defined $final_text || $final_text !~ /\S/) {
+        $final_text = "(Sub-agent completed without returning text summary)";
     }
 
     return $final_text;

@@ -422,6 +422,101 @@ sub read_file_raw {
     is(read_file_raw($ef), "こんにちは\nPowerPC Mac OS X\nTiger\n", "UTF-8 content preserved and replaced");
 }
 
+# 15. Schema property: target exists
+{
+    ok($edit_props->{target}, "target property exists in schema");
+    is($edit_props->{target}{type}, 'string', "target is string type");
+}
+
+# 16. Content-targeted replacement (without line numbers)
+{
+    my $ef = write_temp_file("target_edit.txt", "alpha = 1\nbeta = 2\ngamma = 3\n");
+    set_auto_mode(1);
+
+    my $res = run_tool('edit_file', {
+        path    => $ef,
+        target  => "beta = 2\n",
+        content => "beta = 42\n",
+    });
+    is($res, "Edit complete: $ef", "edit_file target replacement succeeds");
+    is(read_file_raw($ef), "alpha = 1\nbeta = 42\ngamma = 3\n", "targeted block replaced cleanly without line numbers");
+}
+
+# 17. Target not found error
+{
+    my $ef = write_temp_file("target_miss.txt", "one\ntwo\nthree\n");
+    set_auto_mode(1);
+
+    my $res = run_tool('edit_file', {
+        path    => $ef,
+        target  => "four\n",
+        content => "five\n",
+    });
+    like($res, qr/Error: target text not found/i, "edit_file returns error when target text not found");
+}
+
+# 18. Target ambiguous error (multiple occurrences)
+{
+    my $ef = write_temp_file("target_multi.txt", "item = 1\nitem = 1\n");
+    set_auto_mode(1);
+
+    my $res = run_tool('edit_file', {
+        path    => $ef,
+        target  => "item = 1",
+        content => "item = 2",
+    });
+    like($res, qr/Error: target text appears 2 times/i, "edit_file rejects ambiguous target occurring multiple times");
+}
+
+# 19. Line-based editing with matching target verification
+{
+    my $ef = write_temp_file("line_target_ok.txt", "line A\nline B\nline C\n");
+    set_auto_mode(1);
+
+    my $res = run_tool('edit_file', {
+        path       => $ef,
+        start_line => 2,
+        end_line   => 2,
+        target     => "line B\n",
+        content    => "line B_modified\n",
+    });
+    is($res, "Edit complete: $ef", "edit_file succeeds when target matches line range");
+    is(read_file_raw($ef), "line A\nline B_modified\nline C\n", "line verified and replaced");
+}
+
+# 20. Line-drift auto-relocation with unique target
+{
+    my $ef = write_temp_file("line_drift.txt", "header\ninserted 1\ninserted 2\nold_line\nfooter\n");
+    set_auto_mode(1);
+
+    # Target 'old_line\n' is now at line 4, but caller passed stale line 2
+    my $res = run_tool('edit_file', {
+        path       => $ef,
+        start_line => 2,
+        end_line   => 2,
+        target     => "old_line\n",
+        content    => "new_line\n",
+    });
+    is($res, "Edit complete: $ef", "edit_file auto-relocates when target shifted due to line drift");
+    is(read_file_raw($ef), "header\ninserted 1\ninserted 2\nnew_line\nfooter\n", "shifted line correctly updated at relocated position");
+}
+
+# 21. Target mismatch error when target does not match and is not found
+{
+    my $ef = write_temp_file("line_mismatch.txt", "line 1\nline 2\nline 3\n");
+    set_auto_mode(1);
+
+    my $res = run_tool('edit_file', {
+        path       => $ef,
+        start_line => 1,
+        end_line   => 1,
+        target     => "non_existent_target\n",
+        content    => "replacement\n",
+    });
+    like($res, qr/Error: target text does not match lines 1-1/i, "edit_file rejects edit on target mismatch");
+    is(read_file_raw($ef), "line 1\nline 2\nline 3\n", "file content remains unmodified after mismatch error");
+}
+
 # ==================================================================
 # Task 3: System prompt documents tools, XML sections, and line-based usage
 # ==================================================================
@@ -429,6 +524,7 @@ our $SYSTEM_PROMPT;
 ok(defined $SYSTEM_PROMPT, "SYSTEM_PROMPT is defined");
 like($SYSTEM_PROMPT, qr/<turn_economy>.*<\/turn_economy>/s, "SYSTEM_PROMPT defines <turn_economy> XML section");
 like($SYSTEM_PROMPT, qr/<file_editing>.*<\/file_editing>/s, "SYSTEM_PROMPT defines <file_editing> XML section");
+like($SYSTEM_PROMPT, qr/<tool_boundaries>.*<\/tool_boundaries>/s, "SYSTEM_PROMPT defines <tool_boundaries> XML section");
 like($SYSTEM_PROMPT, qr/<tiger_env>.*<\/tiger_env>/s, "SYSTEM_PROMPT defines <tiger_env> XML section");
 like($SYSTEM_PROMPT, qr/\bread_file\b/, "SYSTEM_PROMPT documents read_file");
 like($SYSTEM_PROMPT, qr/\bwrite_file\b/, "SYSTEM_PROMPT documents write_file");
