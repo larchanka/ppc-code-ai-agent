@@ -407,6 +407,73 @@ sub has_thinking_block {
     return 0;
 }
 
+sub extract_api_usage_anthropic {
+    my ($resp) = @_;
+    my $usage = (defined $resp && ref($resp) eq 'HASH' && ref($resp->{usage}) eq 'HASH')
+        ? $resp->{usage} : {};
+    return {
+        input_tokens       => int($usage->{input_tokens} || 0),
+        output_tokens      => int($usage->{output_tokens} || 0),
+        cache_read_tokens  => int($usage->{cache_read_input_tokens} || $usage->{cache_read_tokens} || 0),
+        cache_write_tokens => int($usage->{cache_creation_input_tokens} || $usage->{cache_write_tokens} || 0),
+    };
+}
+
+sub extract_api_usage_gemini {
+    my ($resp) = @_;
+    my $usage = {};
+    if (defined $resp && ref($resp) eq 'HASH') {
+        if (ref($resp->{usageMetadata}) eq 'HASH') {
+            $usage = $resp->{usageMetadata};
+        } elsif (ref($resp->{usage}) eq 'HASH') {
+            $usage = $resp->{usage};
+        }
+    }
+    return {
+        input_tokens       => int($usage->{promptTokenCount} || $usage->{prompt_token_count} || $usage->{input_tokens} || 0),
+        output_tokens      => int($usage->{candidatesTokenCount} || $usage->{candidates_token_count} || $usage->{output_tokens} || 0),
+        cache_read_tokens  => int($usage->{cachedContentTokenCount} || $usage->{cached_content_token_count} || $usage->{cache_read_tokens} || 0),
+        cache_write_tokens => 0,
+    };
+}
+
+sub extract_api_usage_openai {
+    my ($resp) = @_;
+    my $usage = (defined $resp && ref($resp) eq 'HASH' && ref($resp->{usage}) eq 'HASH')
+        ? $resp->{usage} : {};
+    my $prompt_details = (ref($usage->{prompt_tokens_details}) eq 'HASH')
+        ? $usage->{prompt_tokens_details} : {};
+    my $cached = $prompt_details->{cached_tokens}
+              || $usage->{cache_read_tokens}
+              || 0;
+    return {
+        input_tokens       => int($usage->{prompt_tokens} || $usage->{input_tokens} || 0),
+        output_tokens      => int($usage->{completion_tokens} || $usage->{output_tokens} || 0),
+        cache_read_tokens  => int($cached),
+        cache_write_tokens => int($usage->{cache_write_tokens} || 0),
+    };
+}
+
+sub extract_api_usage {
+    my ($resp, $provider) = @_;
+    return {
+        input_tokens       => 0,
+        output_tokens      => 0,
+        cache_read_tokens  => 0,
+        cache_write_tokens => 0,
+    } unless defined $resp && ref($resp) eq 'HASH';
+
+    $provider = $PROVIDER unless defined $provider;
+
+    if ($provider eq 'gemini') {
+        return extract_api_usage_gemini($resp);
+    }
+    elsif ($provider eq 'openai') {
+        return extract_api_usage_openai($resp);
+    }
+    return extract_api_usage_anthropic($resp);
+}
+
 # --- Provider model discovery & schema adapters ---
 sub fetch_models {
     my ($provider) = @_;

@@ -155,6 +155,11 @@ while (1) {
         next;
     }
 
+    if ($input eq '/stats' || $input =~ m{^/stats(?:\s+.*)?$}) {
+        handle_stats_command();
+        next;
+    }
+
     if ($input =~ m{^/mcp(?:\s+(.*))?$}) {
         handle_mcp_command($1);
         next;
@@ -226,6 +231,8 @@ while (1) {
             last;
         }
 
+        record_session_api_usage($resp, $session);
+
         my @content_blocks = eval { parse_response($resp) };
         if ($@) {
             print clear_thinking_line() if -t STDOUT;
@@ -258,6 +265,7 @@ while (1) {
             elsif ($block->{type} eq 'tool_use') {
                 $printed_code_ai_prompt = 0;
                 print "\n" . format_tool_call($block->{name}, $block->{input}) . "\n";
+                record_session_tool_call($block->{name}, $session);
                 my $result = run_tool($block->{name}, $block->{input});
                 push @tool_results, {
                     type => 'tool_result',

@@ -579,6 +579,8 @@ sub run_subagent {
 
     local $CURRENT_SUBAGENT_TYPE = $subagent_type;
 
+    record_session_subagent_call($CURRENT_SESSION);
+
     print format_subagent_start($subagent_type, $task);
 
     my $turn = 0;
@@ -597,6 +599,8 @@ sub run_subagent {
             print format_subagent_finish($subagent_type, $turn, "Failed: API error");
             return $err;
         }
+
+        record_session_api_usage($resp, $CURRENT_SESSION);
 
         my @content_blocks = eval { parse_response($resp) };
         if ($@) {
@@ -645,6 +649,7 @@ sub run_subagent {
                 $result = "Error: sub-agents cannot invoke sub-agents.";
             }
             else {
+                record_session_tool_call($t_name, $CURRENT_SESSION);
                 $result = run_tool($t_name, $t_input);
             }
 
