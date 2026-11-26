@@ -253,4 +253,166 @@ sub show_banner {
     print $out_fh " Type /help for commands, /models to switch model.\n";
 }
 
+# --- Session Statistics Formatting Helpers ---
+
+sub format_duration {
+    my ($seconds) = @_;
+    $seconds = 0 if !defined $seconds || $seconds < 0;
+    $seconds = int($seconds);
+
+    if ($seconds < 60) {
+        return "${seconds}s";
+    }
+    elsif ($seconds < 3600) {
+        my $m = int($seconds / 60);
+        my $s = $seconds % 60;
+        return "${m}m ${s}s";
+    }
+    else {
+        my $h = int($seconds / 3600);
+        my $rem = $seconds % 3600;
+        my $m = int($rem / 60);
+        my $s = $rem % 60;
+        return "${h}h ${m}m ${s}s";
+    }
+}
+
+sub format_number_comma {
+    my ($num) = @_;
+    return '0' unless defined $num && length($num);
+    my $sign = '';
+    $num = "$num";
+    if ($num =~ s/^-//) {
+        $sign = '-';
+    }
+    my ($int, $dec) = split(/\./, $num, 2);
+    1 while $int =~ s/^(-?\d+)(\d{3})/$1,$2/;
+    return defined $dec ? "$sign$int.$dec" : "$sign$int";
+}
+
+sub _format_stats_header {
+    my ($session, $duration_str) = @_;
+    my $c_head  = defined $COLOR_HEADER ? $COLOR_HEADER : '';
+    my $c_reset = defined $COLOR_RESET  ? $COLOR_RESET  : '';
+
+    my $id = defined $session->{id} ? $session->{id} : 'unknown';
+    my $prov = defined $session->{provider} ? $session->{provider} : ($PROVIDER || 'unknown');
+    my $model = defined $session->{model} ? $session->{model} : ($MODEL || 'unknown');
+
+    my $created = defined $session->{created_at} ? int($session->{created_at}) : time();
+    my ($sec, $min, $hour, $mday, $mon, $year) = localtime($created);
+    $year += 1900;
+    $mon += 1;
+    my $started_str = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year, $mon, $mday, $hour, $min, $sec);
+
+    my $out = "\n${c_head}=== Session Statistics ===${c_reset}\n";
+    $out .= "  Session ID: $id\n";
+    $out .= "  Provider:   $prov\n";
+    $out .= "  Model:      $model\n";
+    $out .= "  Started:    $started_str\n";
+    $out .= "  Duration:   $duration_str\n\n";
+    return $out;
+}
+
+sub _format_stats_activity {
+    my ($session, $stats) = @_;
+    my $c_bold  = defined $STYLE_BOLD  ? $STYLE_BOLD  : '';
+    my $c_reset = defined $COLOR_RESET ? $COLOR_RESET : '';
+
+    my $user_turns = count_user_turns($session);
+    my $asst_turns = count_assistant_turns($session);
+    my $total_msgs = (ref($session->{messages}) eq 'ARRAY') ? scalar(@{ $session->{messages} }) : 0;
+    my $api_calls  = $stats->{api_calls} || 0;
+    my $chars      = estimate_session_chars($session);
+
+    my $out = "${c_bold}Activity:${c_reset}\n";
+    $out .= "  User turns:      " . format_number_comma($user_turns) . "\n";
+    $out .= "  Assistant turns: " . format_number_comma($asst_turns) . "\n";
+    $out .= "  Total messages:  " . format_number_comma($total_msgs) . "\n";
+    $out .= "  API calls:       " . format_number_comma($api_calls) . "\n";
+    $out .= "  Context size:    " . format_number_comma($chars) . " chars\n\n";
+    return $out;
+}
+
+sub _format_stats_tokens {
+    my ($stats) = @_;
+    my $c_bold  = defined $STYLE_BOLD  ? $STYLE_BOLD  : '';
+    my $c_reset = defined $COLOR_RESET ? $COLOR_RESET : '';
+
+    my $in_tok  = $stats->{input_tokens} || 0;
+    my $out_tok = $stats->{output_tokens} || 0;
+    my $tot_tok = $in_tok + $out_tok;
+    my $cr_tok  = $stats->{cache_read_tokens} || 0;
+    my $cw_tok  = $stats->{cache_write_tokens} || 0;
+
+    my $out = "${c_bold}Token Usage:${c_reset}\n";
+    $out .= "  Input tokens:    " . format_number_comma($in_tok) . "\n";
+    $out .= "  Output tokens:   " . format_number_comma($out_tok) . "\n";
+    $out .= "  Total tokens:    " . format_number_comma($tot_tok) . "\n";
+    if ($cr_tok > 0) {
+        $out .= "  Cache read:      " . format_number_comma($cr_tok) . "\n";
+    }
+    if ($cw_tok > 0) {
+        $out .= "  Cache write:     " . format_number_comma($cw_tok) . "\n";
+    }
+    $out .= "\n";
+    return $out;
+}
+
+sub _format_stats_tools {
+    my ($stats) = @_;
+    my $c_bold  = defined $STYLE_BOLD  ? $STYLE_BOLD  : '';
+    my $c_reset = defined $COLOR_RESET ? $COLOR_RESET : '';
+
+    my $tool_calls = $stats->{tool_calls} || 0;
+    my $subagents  = $stats->{subagent_calls} || 0;
+    my $tools_href = (ref($stats->{tools}) eq 'HASH') ? $stats->{tools} : {};
+
+    my $out = "${c_bold}Tool Invocations:${c_reset}\n";
+    $out .= "  Total tool calls: " . format_number_comma($tool_calls) . "\n";
+    if ($subagents > 0) {
+        $out .= "  Sub-agents:       " . format_number_comma($subagents) . "\n";
+    }
+    for my $tool_name (sort keys %$tools_href) {
+        my $cnt = $tools_href->{$tool_name} || 0;
+        $out .= "    $tool_name: " . format_number_comma($cnt) . "\n";
+    }
+    $out .= "\n";
+    return $out;
+}
+
+sub _format_stats_compaction {
+    my ($stats) = @_;
+    my $compact_cnt = $stats->{compact_count} || 0;
+    return '' unless $compact_cnt > 0;
+
+    my $c_bold  = defined $STYLE_BOLD  ? $STYLE_BOLD  : '';
+    my $c_reset = defined $COLOR_RESET ? $COLOR_RESET : '';
+    my $bytes_saved = $stats->{bytes_saved} || 0;
+
+    my $out = "${c_bold}Context Compaction:${c_reset}\n";
+    $out .= "  Compactions:     " . format_number_comma($compact_cnt) . "\n";
+    $out .= "  Bytes saved:     " . format_number_comma($bytes_saved) . " bytes\n\n";
+    return $out;
+}
+
+sub format_session_stats {
+    my ($session) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return "No active session.\n" unless defined $session && ref($session) eq 'HASH';
+
+    my $stats = get_session_stats($session);
+    my $created = defined $session->{created_at} ? int($session->{created_at}) : time();
+    my $now = time();
+    my $elapsed = ($now >= $created) ? ($now - $created) : 0;
+    my $duration_str = format_duration($elapsed);
+
+    return _format_stats_header($session, $duration_str)
+         . _format_stats_activity($session, $stats)
+         . _format_stats_tokens($stats)
+         . _format_stats_tools($stats)
+         . _format_stats_compaction($stats);
+}
+
+
 

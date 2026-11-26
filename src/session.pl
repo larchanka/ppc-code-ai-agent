@@ -35,6 +35,73 @@ sub set_max_tokens {
     return $MAX_TOKENS;
 }
 
+sub _default_session_stats {
+    return {
+        api_calls          => 0,
+        input_tokens       => 0,
+        output_tokens      => 0,
+        cache_read_tokens  => 0,
+        cache_write_tokens => 0,
+        tool_calls         => 0,
+        subagent_calls     => 0,
+        compact_count      => 0,
+        bytes_saved        => 0,
+        tools              => {},
+    };
+}
+
+sub get_session_stats {
+    my ($session) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return undef unless defined $session && ref($session) eq 'HASH';
+    if (!defined $session->{stats} || ref($session->{stats}) ne 'HASH') {
+        $session->{stats} = _default_session_stats();
+    }
+    return $session->{stats};
+}
+
+sub record_session_api_usage {
+    my ($resp, $session, $provider) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return undef unless defined $session && ref($session) eq 'HASH';
+    $provider = $session->{provider} || $PROVIDER unless defined $provider;
+
+    my $stats = get_session_stats($session);
+    $stats->{api_calls}++;
+
+    my $usage = extract_api_usage($resp, $provider);
+    if ($usage && ref($usage) eq 'HASH') {
+        $stats->{input_tokens}       += ($usage->{input_tokens} || 0);
+        $stats->{output_tokens}      += ($usage->{output_tokens} || 0);
+        $stats->{cache_read_tokens}  += ($usage->{cache_read_tokens} || 0);
+        $stats->{cache_write_tokens} += ($usage->{cache_write_tokens} || 0);
+    }
+    return $stats;
+}
+
+sub record_session_tool_call {
+    my ($tool_name, $session) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return undef unless defined $session && ref($session) eq 'HASH';
+
+    my $stats = get_session_stats($session);
+    $stats->{tool_calls}++;
+    if (defined $tool_name && length($tool_name)) {
+        $stats->{tools}{$tool_name}++;
+    }
+    return $stats;
+}
+
+sub record_session_subagent_call {
+    my ($session) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return undef unless defined $session && ref($session) eq 'HASH';
+
+    my $stats = get_session_stats($session);
+    $stats->{subagent_calls}++;
+    return $stats;
+}
+
 sub generate_session_id {
     my ($sec, $min, $hour, $mday, $mon, $year) = localtime();
     $SESSION_COUNTER++;
@@ -51,6 +118,7 @@ sub init_session {
         provider   => $PROVIDER,
         model      => $MODEL,
         messages   => [],
+        stats      => _default_session_stats(),
     };
     return $CURRENT_SESSION;
 }
@@ -89,6 +157,7 @@ sub show_help {
     print $out_fh "  /models  - View and switch available AI models\n";
     print $out_fh "  /ctx     - View or set max output tokens per response (e.g. /ctx 64k)\n";
     print $out_fh "  /compact - Compact conversation history to free context and memory\n";
+    print $out_fh "  /stats   - View current session statistics (duration, tokens, turns, tools)\n";
     print $out_fh "  /claude  - Switch to Anthropic Claude\n";
     print $out_fh "  /gemini  - Switch to Google Gemini\n";
     print $out_fh "  /openai  - Switch to OpenAI-compatible endpoint (alias: /local)\n";
@@ -280,6 +349,19 @@ sub count_user_turns {
     return scalar(@indices);
 }
 
+sub count_assistant_turns {
+    my ($session) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return 0 unless defined $session && ref($session->{messages}) eq 'ARRAY';
+    my $count = 0;
+    for my $m (@{ $session->{messages} }) {
+        if (ref($m) eq 'HASH' && defined $m->{role} && $m->{role} eq 'assistant') {
+            $count++;
+        }
+    }
+    return $count;
+}
+
 sub compact_session_history {
     my ($session, %opts) = @_;
     $session = $CURRENT_SESSION unless defined $session;
@@ -327,6 +409,14 @@ sub compact_session_history {
         }
     }
 
+    if ($compacted_count > 0) {
+        my $stats = get_session_stats($session);
+        if ($stats) {
+            $stats->{compact_count} += $compacted_count;
+            $stats->{bytes_saved}   += $bytes_saved;
+        }
+    }
+
     return {
         compacted_count => $compacted_count,
         bytes_saved     => $bytes_saved,
@@ -370,6 +460,21 @@ sub handle_compact_command {
         print $out_fh "Session history is already compact (no older tool outputs to truncate).\n";
     }
     return $stats;
+}
+
+sub handle_stats_command {
+    my ($out_fh, $session) = @_;
+    $out_fh ||= \*STDOUT;
+    $session = $CURRENT_SESSION unless defined $session;
+
+    if (!defined $session) {
+        print $out_fh "No active session.\n";
+        return undef;
+    }
+
+    my $report = format_session_stats($session);
+    print $out_fh $report;
+    return 1;
 }
 
 
