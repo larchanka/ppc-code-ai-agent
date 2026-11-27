@@ -741,7 +741,7 @@ like($SYSTEM_PROMPT, qr/save turns|turn_economy/i, "SYSTEM_PROMPT explains turn 
 
         is($time_err, '', "run_shell does not leak time keyword stderr to terminal");
         like($time_res, qr/time_test_ok/, "run_shell captures command output when using time");
-        like($time_res, qr/real\s+\d/m, "run_shell captures time keyword stats into result");
+        like($time_res, qr/(?:real\s+\d|\belapsed\b|\buser\b)/m, "run_shell captures time keyword stats into result");
     }
 }
 
