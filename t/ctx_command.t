@@ -57,7 +57,7 @@ is(format_context_size(1500), '1500', 'format_context_size: 1500 -> 1500');
 # ==================================================================
 # 3. get_max_tokens() and set_max_tokens($tokens)
 # ==================================================================
-is(get_max_tokens(), 4096, 'Default max tokens is 4096 (4k)');
+is(get_max_tokens(), 16384, 'Default max tokens is 16384 (16k)');
 
 is(set_max_tokens(65536), 65536, 'set_max_tokens(65536) returns 65536');
 is(get_max_tokens(), 65536, 'get_max_tokens() returns 65536 after update');

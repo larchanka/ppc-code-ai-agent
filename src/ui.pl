@@ -41,68 +41,86 @@ sub _format_line_range {
     return undef;
 }
 
+sub _summary_file_base {
+    my ($input) = @_;
+    my $base = extract_basename(resolve_path_param($input));
+    return length($base) ? $base : '?';
+}
+
+sub _summary_read_file {
+    my ($input) = @_;
+    my $range = _format_line_range($input);
+    return defined $range ? (_summary_file_base($input), $range) : (_summary_file_base($input));
+}
+
+sub _summary_write_file {
+    my ($input) = @_;
+    my @out = (_summary_file_base($input));
+    my $content = resolve_content_param($input);
+    push @out, truncate_text($content, 20) if defined $content && length($content) > 0;
+    return @out;
+}
+
+sub _summary_edit_file {
+    my ($input) = @_;
+    my @out = (_summary_file_base($input));
+    my $range = _format_line_range($input);
+    push @out, $range if defined $range;
+    my $rep = resolve_content_param($input, 'replacement', 'new_text');
+    push @out, truncate_text($rep, 20) if defined $rep && length($rep) > 0;
+    return @out;
+}
+
+sub _summary_run_shell {
+    my ($input) = @_;
+    my $cmd = resolve_command_param($input);
+    return (defined $cmd && length($cmd) > 0) ? (truncate_text($cmd, 20)) : ();
+}
+
+sub _summary_list_dir {
+    my ($input) = @_;
+    my $p = resolve_path_param($input);
+    return (!defined $p || $p eq '' || $p eq '.') ? ('.') : (extract_basename($p));
+}
+
+sub _summary_invoke_subagent {
+    my ($input) = @_;
+    my $type = (defined $input->{subagent_type} && length $input->{subagent_type})
+             ? $input->{subagent_type}
+             : 'build';
+    my @out = ("[$type]");
+    push @out, truncate_text($input->{task}, 30) if defined $input->{task} && length $input->{task};
+    return @out;
+}
+
+sub _summary_generic_tool {
+    my ($input) = @_;
+    for my $k (sort keys %$input) {
+        next if $k =~ /^_/;
+        my $v = $input->{$k};
+        if (defined $v && !ref($v) && length($v) > 0) {
+            return (truncate_text($v, 20));
+        }
+    }
+    return ();
+}
+
+my %TOOL_SUMMARY_FORMATTERS = (
+    read_file       => \&_summary_read_file,
+    write_file      => \&_summary_write_file,
+    edit_file       => \&_summary_edit_file,
+    run_shell       => \&_summary_run_shell,
+    list_dir        => \&_summary_list_dir,
+    invoke_subagent => \&_summary_invoke_subagent,
+);
+
 sub format_tool_summary {
     my ($name, $input) = @_;
     $name = '' unless defined $name;
     $input = {} unless defined $input && ref($input) eq 'HASH';
 
-    my @parts = ($name);
-
-    if ($name eq 'read_file') {
-        my $base = extract_basename($input->{path});
-        push @parts, (length($base) ? $base : '?');
-        my $range = _format_line_range($input);
-        push @parts, $range if defined $range;
-    }
-    elsif ($name eq 'write_file') {
-        my $base = extract_basename($input->{path});
-        push @parts, (length($base) ? $base : '?');
-        if (defined $input->{content} && length($input->{content}) > 0) {
-            push @parts, truncate_text($input->{content}, 20);
-        }
-    }
-    elsif ($name eq 'edit_file') {
-        my $base = extract_basename($input->{path});
-        push @parts, (length($base) ? $base : '?');
-        my $range = _format_line_range($input);
-        push @parts, $range if defined $range;
-        my $rep = defined $input->{content} ? $input->{content}
-                : defined $input->{replacement} ? $input->{replacement}
-                : undef;
-        if (defined $rep && length($rep) > 0) {
-            push @parts, truncate_text($rep, 20);
-        }
-    }
-    elsif ($name eq 'run_shell') {
-        if (defined $input->{command} && length($input->{command}) > 0) {
-            push @parts, truncate_text($input->{command}, 20);
-        }
-    }
-    elsif ($name eq 'list_dir') {
-        my $target = (!defined $input->{path} || $input->{path} eq '' || $input->{path} eq '.')
-                   ? '.'
-                   : extract_basename($input->{path});
-        push @parts, $target;
-    }
-    elsif ($name eq 'invoke_subagent') {
-        my $type = (defined $input->{subagent_type} && length $input->{subagent_type})
-                 ? $input->{subagent_type}
-                 : 'build';
-        push @parts, "[$type]";
-        if (defined $input->{task} && length $input->{task}) {
-            push @parts, truncate_text($input->{task}, 30);
-        }
-    }
-    else {
-        for my $k (sort keys %$input) {
-            my $v = $input->{$k};
-            if (defined $v && !ref($v) && length($v) > 0) {
-                push @parts, truncate_text($v, 20);
-                last;
-            }
-        }
-    }
-
+    my $formatter = $TOOL_SUMMARY_FORMATTERS{$name} || \&_summary_generic_tool;
+    my @parts = ($name, $formatter->($input));
     return join('   ', @parts);
 }
 

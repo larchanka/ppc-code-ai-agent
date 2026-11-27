@@ -361,4 +361,283 @@ close $tf;
     @TOOLS = grep { $_->{name} ne 'mcp__git__status' } @TOOLS;
 }
 
+# ==================================================================
+# 9. Truncated Response & Thinking-Only Turn Auto-Continuation
+# ==================================================================
+# 9a. Thinking-only turn followed by tool call and final summary
+{
+    my $turn_count = 0;
+    my $second_turn_payload = '';
+
+    no warnings 'redefine';
+    local *call_api = sub {
+        my ($url, $headers, $payload_json) = @_;
+        $turn_count++;
+        if ($turn_count == 1) {
+            return {
+                content => [
+                    {
+                        type      => 'thinking',
+                        text      => 'Let me think carefully about the plan...',
+                        signature => 'sig_1',
+                    }
+                ]
+            };
+        }
+        elsif ($turn_count == 2) {
+            $second_turn_payload = $payload_json;
+            return {
+                content => [
+                    {
+                        type => 'text',
+                        text => 'Finished thinking: here is the final summary.',
+                    }
+                ]
+            };
+        }
+    };
+    use warnings 'redefine';
+
+    my $out = run_subagent("Reasoning task", "plan");
+    is($turn_count, 2, "Subagent continued automatically after thinking-only turn");
+    is($out, "Finished thinking: here is the final summary.", "Subagent returned final summary from continuation turn");
+    like($second_turn_payload, qr/continue/i, "Continuation user prompt sent on turn 2");
+    like($second_turn_payload, qr/\[Turn 1 of 50\. Turns remaining: 49\]/, "Continuation user prompt includes turn countdown note");
+}
+
+# 9b. Truncated response (stop_reason => 'max_tokens') with partial text accumulated across turns
+{
+    my $turn_count = 0;
+
+    no warnings 'redefine';
+    local *call_api = sub {
+        my ($url, $headers, $payload_json) = @_;
+        $turn_count++;
+        if ($turn_count == 1) {
+            return {
+                stop_reason => 'max_tokens',
+                content     => [
+                    {
+                        type => 'text',
+                        text => 'Part 1 of summary. ',
+                    }
+                ]
+            };
+        }
+        else {
+            return {
+                stop_reason => 'end_turn',
+                content     => [
+                    {
+                        type => 'text',
+                        text => 'Part 2 of summary.',
+                    }
+                ]
+            };
+        }
+    };
+    use warnings 'redefine';
+
+    my $out = run_subagent("Long summary task", "plan");
+    is($turn_count, 2, "Subagent continued automatically after truncated max_tokens response");
+    is($out, "Part 1 of summary. Part 2 of summary.", "Partial text across truncated continuation turns is accumulated cleanly");
+}
+
+# 9c. Continuation cap ($max_continuations = 3) prevents infinite loops on repeated thinking-only turns
+{
+    my $turn_count = 0;
+
+    no warnings 'redefine';
+    local *call_api = sub {
+        $turn_count++;
+        return {
+            content => [
+                {
+                    type      => 'thinking',
+                    text      => "Still thinking on turn $turn_count...",
+                    signature => "sig_$turn_count",
+                }
+            ]
+        };
+    };
+    use warnings 'redefine';
+
+    my $out = run_subagent("Stuck thinking task", "plan");
+    is($turn_count, 4, "Subagent stops after 1 initial turn + 3 consecutive continuations (4 turns total)");
+    is($out, "(Sub-agent completed without returning text summary)", "Clean fallback summary returned when continuation cap is reached with no text");
+}
+
+# 9d. Continuation counter resets when a tool call is executed
+{
+    my $turn_count = 0;
+
+    no warnings 'redefine';
+    local *call_api = sub {
+        $turn_count++;
+        if ($turn_count == 1 || $turn_count == 2) {
+            # 2 consecutive thinking-only turns
+            return {
+                content => [
+                    { type => 'thinking', text => "Thinking $turn_count", signature => "s$turn_count" }
+                ]
+            };
+        }
+        elsif ($turn_count == 3) {
+            # Tool call resets consecutive continuation counter!
+            return {
+                content => [
+                    { type => 'tool_use', id => 'toolu_reset', name => 'list_dir', input => { path => '.' } }
+                ]
+            };
+        }
+        elsif ($turn_count == 4 || $turn_count == 5) {
+            # Another 2 consecutive thinking-only turns (would exceed 3 if not reset)
+            return {
+                content => [
+                    { type => 'thinking', text => "Thinking $turn_count", signature => "s$turn_count" }
+                ]
+            };
+        }
+        else {
+            return {
+                content => [
+                    { type => 'text', text => 'Completed after reset.' }
+                ]
+            };
+        }
+    };
+    use warnings 'redefine';
+
+    my $out = run_subagent("Reset continuation counter task", "plan");
+    is($turn_count, 6, "Subagent allowed full continuation budget again after tool call turn");
+    is($out, "Completed after reset.", "Subagent completed normally after reset");
+}
+
+# 9e. is_response_truncated unit tests across OpenAI, Anthropic, and Gemini
+{
+    is(is_response_truncated({ choices => [ { finish_reason => 'length' } ] }, 'openai'), 1,
+        "is_response_truncated: OpenAI finish_reason => 'length' returns 1");
+    is(is_response_truncated({ choices => [ { finish_reason => 'max_tokens' } ] }, 'openai'), 1,
+        "is_response_truncated: OpenAI finish_reason => 'max_tokens' returns 1");
+    is(is_response_truncated({ choices => [ { finish_reason => 'stop' } ] }, 'openai'), 0,
+        "is_response_truncated: OpenAI finish_reason => 'stop' returns 0");
+
+    is(is_response_truncated({ stop_reason => 'max_tokens' }, 'anthropic'), 1,
+        "is_response_truncated: Anthropic stop_reason => 'max_tokens' returns 1");
+    is(is_response_truncated({ stop_reason => 'end_turn' }, 'anthropic'), 0,
+        "is_response_truncated: Anthropic stop_reason => 'end_turn' returns 0");
+
+    is(is_response_truncated({ candidates => [ { finishReason => 'MAX_TOKENS' } ] }, 'gemini'), 1,
+        "is_response_truncated: Gemini finishReason => 'MAX_TOKENS' returns 1");
+    is(is_response_truncated({ candidates => [ { finishReason => 'STOP' } ] }, 'gemini'), 0,
+        "is_response_truncated: Gemini finishReason => 'STOP' returns 0");
+    is(is_response_truncated(undef, 'openai'), 0,
+        "is_response_truncated: undef response returns 0");
+}
+
+# 9f. OpenAI sub-agent recovery from truncated tool call JSON and finish_reason => 'length' continuation
+{
+    local $ENV{OPENAI_BASE_URL} = 'http://localhost:11434/v1';
+    local $ENV{OPENAI_API_KEY}  = 'test-openai-key';
+    configure_provider('openai');
+    set_auto_mode(1);
+
+    my $recovered_file = "$temp_dir/openai_recovered.txt";
+    my $turn_count = 0;
+    my $turn2_payload = '';
+    my $turn3_payload = '';
+
+    no warnings 'redefine';
+    local *call_api = sub {
+        my ($url, $headers, $payload_json) = @_;
+        $turn_count++;
+        if ($turn_count == 1) {
+            # Turn 1: OpenAI reasoning model hits max_tokens while emitting write_file arguments
+            return {
+                choices => [
+                    {
+                        finish_reason => 'length',
+                        message       => {
+                            reasoning_content => 'Drafting long file content...',
+                            tool_calls        => [
+                                {
+                                    id       => 'call_trunc_sub_1',
+                                    type     => 'function',
+                                    function => {
+                                        name      => 'write_file',
+                                        arguments => '{"path":"' . $recovered_file . '","content":"truncated',
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            };
+        }
+        elsif ($turn_count == 2) {
+            # Turn 2: Model receives _arg_parse_error tool result, retries with valid JSON using aliases
+            $turn2_payload = $payload_json;
+            return {
+                choices => [
+                    {
+                        finish_reason => 'tool_calls',
+                        message       => {
+                            tool_calls => [
+                                {
+                                    id       => 'call_valid_sub_2',
+                                    type     => 'function',
+                                    function => {
+                                        name      => 'write_file',
+                                        arguments => MiniJSON::encode({
+                                            file_path => $recovered_file,
+                                            text      => "Recovered content!\n",
+                                        }),
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            };
+        }
+        elsif ($turn_count == 3) {
+            # Turn 3: Model starts emitting final summary but hits finish_reason => 'length'
+            $turn3_payload = $payload_json;
+            return {
+                choices => [
+                    {
+                        finish_reason => 'length',
+                        message       => {
+                            content => 'File written successfully. ',
+                        },
+                    },
+                ],
+            };
+        }
+        else {
+            # Turn 4: Model finishes summary after continuation prompt
+            return {
+                choices => [
+                    {
+                        finish_reason => 'stop',
+                        message       => {
+                            content => 'All steps complete.',
+                        },
+                    },
+                ],
+            };
+        }
+    };
+    use warnings 'redefine';
+
+    my $out = run_subagent("Write file and summarize under OpenAI", "build");
+    is($turn_count, 4, "OpenAI sub-agent executed 4 turns (truncated tool call -> valid retry -> truncated summary -> final summary)");
+    like($turn2_payload, qr/truncated or invalid JSON/, "Turn 2 payload delivered _arg_parse_error message to OpenAI model");
+    like($turn3_payload, qr/Write complete:/, "Turn 3 payload confirmed successful retry write");
+    ok(-f $recovered_file, "Recovered file was created on turn 2");
+    is($out, "File written successfully. All steps complete.", "OpenAI truncated summary turns were continued and concatenated");
+
+    configure_provider('anthropic');
+}
+
 done_testing();

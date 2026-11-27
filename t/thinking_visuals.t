@@ -376,4 +376,146 @@ our ($COLOR_DIM, $COLOR_RESET);
     is($blocks[0]{text}, 'Hello World!', 'Anthropic consecutive text: text joined');
 }
 
+# ==================================================================
+# 8. Response truncation detection across providers
+# ==================================================================
+{
+    # OpenAI truncation
+    is(is_response_truncated({ choices => [{ finish_reason => 'length' }] }, 'openai'), 1,
+       'OpenAI finish_reason length is truncated');
+    is(is_response_truncated({ choices => [{ finish_reason => 'max_tokens' }] }, 'openai'), 1,
+       'OpenAI finish_reason max_tokens is truncated');
+    is(is_response_truncated({ choices => [{ finish_reason => 'stop' }] }, 'openai'), 0,
+       'OpenAI finish_reason stop is not truncated');
+    is(is_response_truncated({ choices => [{ finish_reason => 'tool_calls' }] }, 'openai'), 0,
+       'OpenAI finish_reason tool_calls is not truncated');
+
+    # Anthropic truncation
+    is(is_response_truncated({ stop_reason => 'max_tokens' }, 'anthropic'), 1,
+       'Anthropic stop_reason max_tokens is truncated');
+    is(is_response_truncated({ stop_reason => 'end_turn' }, 'anthropic'), 0,
+       'Anthropic stop_reason end_turn is not truncated');
+    is(is_response_truncated({ stop_reason => 'tool_use' }, 'anthropic'), 0,
+       'Anthropic stop_reason tool_use is not truncated');
+
+    # Gemini truncation
+    is(is_response_truncated({ candidates => [{ finishReason => 'MAX_TOKENS' }] }, 'gemini'), 1,
+       'Gemini finishReason MAX_TOKENS is truncated');
+    is(is_response_truncated({ candidates => [{ finishReason => 'STOP' }] }, 'gemini'), 0,
+       'Gemini finishReason STOP is not truncated');
+
+    # Default provider fallback & invalid inputs
+    {
+        local $ENV{ANTHROPIC_API_KEY} = 'test-ant-key';
+        configure_provider('anthropic');
+        is(is_response_truncated({ stop_reason => 'max_tokens' }), 1,
+           'is_response_truncated defaults to current $PROVIDER');
+    }
+    is(is_response_truncated(undef, 'openai'), 0, 'undef response is not truncated');
+    is(is_response_truncated({}, 'openai'), 0, 'empty response is not truncated');
+}
+
+# ==================================================================
+# 9. Malformed / truncated tool-call JSON detection in parse_response_openai
+# ==================================================================
+{
+    # Valid JSON object string
+    my $resp_valid = {
+        choices => [{
+            message => {
+                role => 'assistant',
+                tool_calls => [{
+                    id => 'call_ok',
+                    function => {
+                        name => 'write_file',
+                        arguments => '{"path":"foo.txt","content":"hello"}',
+                    },
+                }],
+            },
+        }],
+    };
+    my @b_valid = parse_response_openai($resp_valid);
+    is($b_valid[0]{type}, 'tool_use', 'Valid tool call parsed as tool_use');
+    is_deeply($b_valid[0]{input}, { path => 'foo.txt', content => 'hello' }, 'Valid JSON decoded into hashref');
+    ok(!exists $b_valid[0]{input}{_arg_parse_error}, 'No _arg_parse_error on valid JSON');
+
+    # Empty / whitespace / undef arguments -> empty hashref {}
+    for my $empty_arg (undef, '', '   ') {
+        my $resp_empty = {
+            choices => [{
+                message => {
+                    role => 'assistant',
+                    tool_calls => [{
+                        id => 'call_empty',
+                        function => {
+                            name => 'list_dir',
+                            arguments => $empty_arg,
+                        },
+                    }],
+                },
+            }],
+        };
+        my @b_empty = parse_response_openai($resp_empty);
+        is_deeply($b_empty[0]{input}, {}, 'Empty/undef arguments default to {} without error');
+    }
+
+    # Truncated / malformed JSON string -> _arg_parse_error
+    my $truncated_json = '{"path":"tasks/plan.md","content":"# Plan\nThis was cut off mid-str';
+    my $resp_trunc = {
+        choices => [{
+            message => {
+                role => 'assistant',
+                tool_calls => [{
+                    id => 'call_trunc',
+                    function => {
+                        name => 'write_file',
+                        arguments => $truncated_json,
+                    },
+                }],
+            },
+        }],
+    };
+    my @b_trunc = parse_response_openai($resp_trunc);
+    is($b_trunc[0]{type}, 'tool_use', 'Truncated tool call still creates tool_use block');
+    ok(exists $b_trunc[0]{input}{_arg_parse_error}, '_arg_parse_error is populated on truncated JSON');
+    like($b_trunc[0]{input}{_arg_parse_error}, qr/\S/, '_arg_parse_error contains non-empty error message');
+    is($b_trunc[0]{input}{_raw_arguments}, $truncated_json, '_raw_arguments preserves original string');
+
+    # Non-HASH JSON (e.g. array) -> _arg_parse_error
+    my $resp_arr = {
+        choices => [{
+            message => {
+                role => 'assistant',
+                tool_calls => [{
+                    id => 'call_arr',
+                    function => {
+                        name => 'write_file',
+                        arguments => '["not","an","object"]',
+                    },
+                }],
+            },
+        }],
+    };
+    my @b_arr = parse_response_openai($resp_arr);
+    ok(exists $b_arr[0]{input}{_arg_parse_error}, '_arg_parse_error is populated when JSON decodes to non-HASH');
+
+    # Already-decoded HASH reference -> passed through directly
+    my $resp_hash = {
+        choices => [{
+            message => {
+                role => 'assistant',
+                tool_calls => [{
+                    id => 'call_hash',
+                    function => {
+                        name => 'read_file',
+                        arguments => { path => 'already_decoded.txt' },
+                    },
+                }],
+            },
+        }],
+    };
+    my @b_hash = parse_response_openai($resp_hash);
+    is_deeply($b_hash[0]{input}, { path => 'already_decoded.txt' }, 'Already-decoded HASH arguments preserved as-is');
+}
+
 done_testing();

@@ -360,214 +360,408 @@ sub format_tool_result {
     return "<untrusted_tool_output tool=\"$name\">\n$sanitized\n</untrusted_tool_output>";
 }
 
-sub run_tool {
-    my ($name, $input) = @_;
-
-    # The return value of run_tool is not shown directly to user, but sent to the model
-    # as tool_result log. The user only directly sees the confirm() prompt.
-    if ($name eq 'read_file') {
-        my $path = $input->{path};
-        if (defined $input->{start_line} && defined $input->{end_line} && $input->{start_line} > $input->{end_line}) {
-            return "Error: start_line ($input->{start_line}) cannot be greater than end_line ($input->{end_line})";
-        }
-        open(my $fh, '<:encoding(UTF-8)', $path) or return "Error: cannot open $path: $!";
-        if (!defined $input->{start_line} && !defined $input->{end_line}) {
-            local $/;
-            my $content = <$fh>;
-            close $fh;
-            return defined $content ? $content : '';
-        }
-        my @lines = <$fh>;
-        close $fh;
-
-        my $total = scalar @lines;
-        my $start = defined $input->{start_line} ? int($input->{start_line}) : 1;
-        my $end   = defined $input->{end_line}   ? int($input->{end_line})   : $total;
-
-        $start = 1 if $start < 1;
-        $end   = $total if $end > $total;
-
-        return '' if $start > $total || $start > $end;
-
-        return join('', @lines[ ($start - 1) .. ($end - 1) ]);
+sub _first_nonempty_param {
+    my ($input, @keys) = @_;
+    return undef unless ref($input) eq 'HASH';
+    for my $key (@keys) {
+        return $input->{$key} if defined $input->{$key} && length($input->{$key});
     }
-    elsif ($name eq 'write_file') {
-        my $path = $input->{path};
-        unless (confirm_tool("Write to file '$path'?")) {
-            return "Cancelled by user.";
-        }
-        open(my $fh, '>:encoding(UTF-8)', $path) or return "Error: cannot write $path: $!";
-        print $fh $input->{content};
-        close $fh;
-        return "Write complete: $path";
+    return undef;
+}
+
+sub resolve_path_param {
+    my ($input) = @_;
+    return _first_nonempty_param($input, 'path', 'file_path', 'filepath', 'filename', 'file', 'dir', 'directory');
+}
+
+sub resolve_content_param {
+    my ($input, @extra_keys) = @_;
+    return undef unless ref($input) eq 'HASH';
+    for my $key ('content', @extra_keys, 'text', 'data', 'body') {
+        return $input->{$key} if defined $input->{$key};
     }
-    elsif ($name eq 'edit_file') {
-        my $path = $input->{path};
-        return "Error: missing required 'path' parameter" unless defined $path && length $path;
+    return undef;
+}
 
-        my $content = defined $input->{content} ? $input->{content}
-                    : defined $input->{replacement} ? $input->{replacement}
-                    : '';
-        my $target = $input->{target};
+sub resolve_command_param {
+    my ($input) = @_;
+    return _first_nonempty_param($input, 'command', 'cmd', 'script', 'shell_command');
+}
 
-        open(my $fh, '<:encoding(UTF-8)', $path) or return "Error: cannot open $path: $!";
-        my @lines = <$fh>;
-        close $fh;
-
-        my $total = scalar @lines;
-
-        # Mode A: content-targeted replacement (when target is specified without line numbers)
-        if (defined $target && length $target && (!defined $input->{start_line} || !defined $input->{end_line})) {
-            my $raw_text = join('', @lines);
-            my $norm_raw = $raw_text;
-            my $norm_target = $target;
-            $norm_raw =~ s/\r\n/\n/g;
-            $norm_target =~ s/\r\n/\n/g;
-
-            my $pos = index($norm_raw, $norm_target);
-            if ($pos < 0) {
-                return "Error: target text not found in '$path'";
-            }
-            my $second_pos = index($norm_raw, $norm_target, $pos + length($norm_target));
-            if ($second_pos >= 0) {
-                my $count = 0;
-                my $p = 0;
-                while (($p = index($norm_raw, $norm_target, $p)) >= 0) {
-                    $count++;
-                    $p += length($norm_target);
-                }
-                return "Error: target text appears $count times in '$path'. Please provide more surrounding lines to make target unique.";
-            }
-
-            unless (confirm_tool("Edit file '$path' (target replace)?")) {
-                return "Cancelled by user.";
-            }
-
-            substr($norm_raw, $pos, length($norm_target), $content);
-
-            open(my $out_fh, '>:encoding(UTF-8)', $path) or return "Error: cannot write $path: $!";
-            print $out_fh $norm_raw;
-            close $out_fh;
-
-            return "Edit complete: $path";
-        }
-
-        # Mode B: line-range editing (with optional target verification & auto-relocation)
-        my $start_line = defined $input->{start_line} ? int($input->{start_line}) : 1;
-        my $end_line   = defined $input->{end_line}   ? int($input->{end_line})   : 0;
-
-        if ($start_line < 1) {
-            return "Error: invalid start_line ($start_line): must be >= 1";
-        }
-
-        if ($start_line > $total + 1) {
-            return "Error: start_line ($start_line) exceeds total lines ($total) + 1";
-        }
-        if ($end_line < $start_line - 1) {
-            return "Error: end_line ($end_line) cannot be less than start_line - 1 (" . ($start_line - 1) . ")";
-        }
-
-        if (defined $target && length $target) {
-            my $expected_slice = '';
-            if ($end_line >= $start_line && $start_line <= $total) {
-                my $clamped_end = $end_line > $total ? $total : $end_line;
-                $expected_slice = join('', @lines[ ($start_line - 1) .. ($clamped_end - 1) ]);
-            }
-
-            my $norm_slice = $expected_slice;
-            my $norm_target = $target;
-            $norm_slice =~ s/\r\n/\n/g;
-            $norm_target =~ s/\r\n/\n/g;
-
-            if ($norm_slice ne $norm_target && $norm_slice ne "$norm_target\n") {
-                # Check if target uniquely exists elsewhere in the file (recovering from line drift)
-                my $raw_text = join('', @lines);
-                $raw_text =~ s/\r\n/\n/g;
-                my $pos = index($raw_text, $norm_target);
-                if ($pos >= 0) {
-                    my $second_pos = index($raw_text, $norm_target, $pos + length($norm_target));
-                    if ($second_pos < 0) {
-                        # Unique match found elsewhere in file! Auto-relocate
-                        my $before = substr($raw_text, 0, $pos);
-                        my $match_str = substr($raw_text, $pos, length($norm_target));
-                        my $new_start = ($before =~ tr/\n//) + 1;
-                        my $match_newlines = ($match_str =~ tr/\n//);
-                        my $new_end = $new_start + $match_newlines;
-                        $new_end-- if $match_str =~ /\n\z/;
-                        $new_end = $new_start if $new_end < $new_start;
-
-                        $start_line = $new_start;
-                        $end_line   = $new_end;
-                    }
-                    else {
-                        return "Error: target text does not match lines $start_line-$end_line in '$path', and target is ambiguous (appears multiple times in file).";
-                    }
-                }
-                else {
-                    return "Error: target text does not match lines $start_line-$end_line in '$path'.\nExpected: $target\nFound: $expected_slice";
-                }
-            }
-        }
-
-        $end_line = $total if $end_line > $total;
-
-        unless (confirm_tool("Edit file '$path' (lines $start_line-$end_line)?")) {
-            return "Cancelled by user.";
-        }
-
-        $content .= "\n" if $content ne '' && $content !~ /\n\z/;
-
-        my $offset = $start_line - 1;
-        my $length = $end_line >= $start_line ? ($end_line - $start_line + 1) : 0;
-
-        if ($content eq '') {
-            splice(@lines, $offset, $length);
-        }
-        else {
-            splice(@lines, $offset, $length, $content);
-        }
-
-        open(my $out_fh, '>:encoding(UTF-8)', $path) or return "Error: cannot write $path: $!";
-        print $out_fh @lines;
-        close $out_fh;
-
-        return "Edit complete: $path";
+sub _ensure_parent_dir {
+    my ($path) = @_;
+    my $dir = File::Basename::dirname($path);
+    return undef unless defined $dir && length($dir) && $dir ne '.' && !-d $dir;
+    eval { File::Path::mkpath($dir) };
+    if ($@ || !-d $dir) {
+        my $err = $@ ? $@ : $!;
+        return "Error: cannot create directory '$dir': $err";
     }
-    elsif ($name eq 'list_dir') {
-        my $path = $input->{path} || '.';
-        opendir(my $dh, $path) or return "Error: cannot open $path: $!";
-        my @entries = sort grep { $_ ne '.' && $_ ne '..' } readdir($dh);
-        closedir $dh;
-        return join("\n", @entries);
+    return undef;
+}
+
+sub _slice_file_lines {
+    my ($lines_ref, $raw_start, $raw_end) = @_;
+    my $total = scalar @$lines_ref;
+    my $start = defined $raw_start ? int($raw_start) : 1;
+    my $end   = defined $raw_end   ? int($raw_end)   : $total;
+    $start = 1      if $start < 1;
+    $end   = $total if $end > $total;
+    return '' if $start > $total || $start > $end;
+    return join('', @{$lines_ref}[ ($start - 1) .. ($end - 1) ]);
+}
+
+sub _tool_read_file {
+    my ($input) = @_;
+    my $path = resolve_path_param($input);
+    return "Error: missing required 'path' parameter" unless defined $path;
+    my ($s, $e) = ($input->{start_line}, $input->{end_line});
+    return "Error: start_line ($s) cannot be greater than end_line ($e)"
+        if defined $s && defined $e && $s > $e;
+
+    open(my $fh, '<:encoding(UTF-8)', $path) or return "Error: cannot open $path: $!";
+    my @lines = <$fh>;
+    close $fh;
+    return join('', @lines) if !defined $s && !defined $e;
+    return _slice_file_lines(\@lines, $s, $e);
+}
+
+sub _tool_write_file {
+    my ($input) = @_;
+    my $path = resolve_path_param($input);
+    return "Error: missing required 'path' parameter" unless defined $path;
+    my $content = resolve_content_param($input);
+    return "Error: missing required 'content' parameter" unless defined $content;
+    return "Cancelled by user." unless confirm_tool("Write to file '$path'?");
+
+    my $mkdir_err = _ensure_parent_dir($path);
+    return $mkdir_err if defined $mkdir_err;
+
+    open(my $fh, '>:encoding(UTF-8)', $path) or return "Error: cannot write $path: $!";
+    print $fh $content;
+    close $fh;
+    return "Write complete: $path";
+}
+
+sub _count_substring_occurrences {
+    my ($text, $sub) = @_;
+    my $count = 0;
+    my $p = 0;
+    while (($p = index($text, $sub, $p)) >= 0) {
+        $count++;
+        $p += length($sub);
     }
-    elsif ($name eq 'run_shell') {
-        my $command = $input->{command};
-        unless (confirm_tool("Run this command: $command")) {
-            return "Cancelled by user.";
-        }
-        my $output = `$command 2>&1`;
-        return (!defined $output || $output eq '') ? '(no output)' : $output;
+    return $count;
+}
+
+sub _edit_file_by_target {
+    my ($path, $lines_ref, $target, $content) = @_;
+    my $norm_raw = join('', @$lines_ref);
+    my $norm_target = $target;
+    $norm_raw =~ s/\r\n/\n/g;
+    $norm_target =~ s/\r\n/\n/g;
+
+    my $pos = index($norm_raw, $norm_target);
+    return "Error: target text not found in '$path'" if $pos < 0;
+
+    if (index($norm_raw, $norm_target, $pos + length($norm_target)) >= 0) {
+        my $count = _count_substring_occurrences($norm_raw, $norm_target);
+        return "Error: target text appears $count times in '$path'. Please provide more surrounding lines to make target unique.";
     }
-    elsif ($name eq 'invoke_subagent') {
-        my $task = $input->{task};
-        return "Error: missing required 'task' parameter" unless defined $task && length $task;
-        my $subagent_type = defined $input->{subagent_type} ? $input->{subagent_type} : 'build';
-        return run_subagent($task, $subagent_type);
-    }
-    elsif (exists $MCP_TOOLS{$name} || $name =~ /^mcp__/) {
-        return mcp_execute_tool($name, $input);
+
+    return "Cancelled by user." unless confirm_tool("Edit file '$path' (target replace)?");
+
+    substr($norm_raw, $pos, length($norm_target), $content);
+    open(my $out_fh, '>:encoding(UTF-8)', $path) or return "Error: cannot write $path: $!";
+    print $out_fh $norm_raw;
+    close $out_fh;
+    return "Edit complete: $path";
+}
+
+sub _expected_line_slice {
+    my ($lines_ref, $start_line, $end_line) = @_;
+    my $total = scalar @$lines_ref;
+    return '' unless $end_line >= $start_line && $start_line <= $total;
+    my $clamped_end = $end_line > $total ? $total : $end_line;
+    return join('', @{$lines_ref}[ ($start_line - 1) .. ($clamped_end - 1) ]);
+}
+
+sub _compute_relocated_range {
+    my ($raw_text, $pos, $len) = @_;
+    my $before = substr($raw_text, 0, $pos);
+    my $match_str = substr($raw_text, $pos, $len);
+    my $new_start = ($before =~ tr/\n//) + 1;
+    my $new_end = $new_start + ($match_str =~ tr/\n//);
+    $new_end-- if $match_str =~ /\n\z/;
+    return ($new_start, $new_end < $new_start ? $new_start : $new_end);
+}
+
+sub _relocate_target_lines {
+    my ($path, $lines_ref, $start_line, $end_line, $target) = @_;
+    my $expected_slice = _expected_line_slice($lines_ref, $start_line, $end_line);
+    my $norm_slice = $expected_slice;
+    my $norm_target = $target;
+    $norm_slice =~ s/\r\n/\n/g;
+    $norm_target =~ s/\r\n/\n/g;
+
+    return ($start_line, $end_line, undef)
+        if $norm_slice eq $norm_target || $norm_slice eq "$norm_target\n";
+
+    my $raw_text = join('', @$lines_ref);
+    $raw_text =~ s/\r\n/\n/g;
+    my $pos = index($raw_text, $norm_target);
+    return ($start_line, $end_line, "Error: target text does not match lines $start_line-$end_line in '$path'.\nExpected: $target\nFound: $expected_slice")
+        if $pos < 0;
+    return ($start_line, $end_line, "Error: target text does not match lines $start_line-$end_line in '$path', and target is ambiguous (appears multiple times in file).")
+        if index($raw_text, $norm_target, $pos + length($norm_target)) >= 0;
+
+    my ($new_start, $new_end) = _compute_relocated_range($raw_text, $pos, length($norm_target));
+    return ($new_start, $new_end, undef);
+}
+
+sub _validate_edit_line_bounds {
+    my ($start_line, $end_line, $total) = @_;
+    return "Error: invalid start_line ($start_line): must be >= 1" if $start_line < 1;
+    return "Error: start_line ($start_line) exceeds total lines ($total) + 1" if $start_line > $total + 1;
+    return "Error: end_line ($end_line) cannot be less than start_line - 1 (" . ($start_line - 1) . ")"
+        if $end_line < $start_line - 1;
+    return undef;
+}
+
+sub _apply_line_edit {
+    my ($path, $lines_ref, $start_line, $end_line, $content) = @_;
+    $content .= "\n" if $content ne '' && $content !~ /\n\z/;
+    my $offset = $start_line - 1;
+    my $length = $end_line >= $start_line ? ($end_line - $start_line + 1) : 0;
+    if ($content eq '') {
+        splice(@$lines_ref, $offset, $length);
     }
     else {
-        return "Unknown tool: $name";
+        splice(@$lines_ref, $offset, $length, $content);
     }
+    open(my $out_fh, '>:encoding(UTF-8)', $path) or return "Error: cannot write $path: $!";
+    print $out_fh @$lines_ref;
+    close $out_fh;
+    return "Edit complete: $path";
+}
+
+sub _edit_file_by_range {
+    my ($path, $lines_ref, $input, $target, $content) = @_;
+    my $total      = scalar @$lines_ref;
+    my $start_line = defined $input->{start_line} ? int($input->{start_line}) : 1;
+    my $end_line   = defined $input->{end_line}   ? int($input->{end_line})   : 0;
+
+    my $bounds_err = _validate_edit_line_bounds($start_line, $end_line, $total);
+    return $bounds_err if defined $bounds_err;
+
+    if (defined $target && length($target)) {
+        my $err;
+        ($start_line, $end_line, $err) = _relocate_target_lines($path, $lines_ref, $start_line, $end_line, $target);
+        return $err if defined $err;
+    }
+
+    $end_line = $total if $end_line > $total;
+    return "Cancelled by user." unless confirm_tool("Edit file '$path' (lines $start_line-$end_line)?");
+    return _apply_line_edit($path, $lines_ref, $start_line, $end_line, $content);
+}
+
+sub _tool_edit_file {
+    my ($input) = @_;
+    my $path = resolve_path_param($input);
+    return "Error: missing required 'path' parameter" unless defined $path;
+
+    my $resolved_content = resolve_content_param($input, 'replacement', 'new_text');
+    my $content = defined $resolved_content ? $resolved_content : '';
+    my $target = _first_nonempty_param($input, 'target');
+
+    open(my $fh, '<:encoding(UTF-8)', $path) or return "Error: cannot open $path: $!";
+    my @lines = <$fh>;
+    close $fh;
+
+    my $has_both_lines = defined $input->{start_line} && defined $input->{end_line};
+    if (defined $target && !$has_both_lines) {
+        return _edit_file_by_target($path, \@lines, $target, $content);
+    }
+    return _edit_file_by_range($path, \@lines, $input, $target, $content);
+}
+
+sub _tool_list_dir {
+    my ($input) = @_;
+    my $resolved_path = resolve_path_param($input);
+    my $path = defined $resolved_path ? $resolved_path : '.';
+    opendir(my $dh, $path) or return "Error: cannot open $path: $!";
+    my @entries = sort grep { $_ ne '.' && $_ ne '..' } readdir($dh);
+    closedir $dh;
+    return join("\n", @entries);
+}
+
+sub _tool_run_shell {
+    my ($input) = @_;
+    my $command = resolve_command_param($input);
+    return "Error: missing required 'command' parameter" unless defined $command;
+    return "Cancelled by user." unless confirm_tool("Run this command: $command");
+    return '(no output)' if index($command, "\0") >= 0;
+    my $output = `(\n$command\n) 2>&1`;
+    return (!defined $output || $output eq '') ? '(no output)' : $output;
+}
+
+sub _tool_invoke_subagent {
+    my ($input) = @_;
+    my $task = $input->{task};
+    return "Error: missing required 'task' parameter" unless defined $task && length $task;
+    my $subagent_type = defined $input->{subagent_type} ? $input->{subagent_type} : 'build';
+    return run_subagent($task, $subagent_type);
+}
+
+my %BUILTIN_TOOL_HANDLERS = (
+    read_file       => \&_tool_read_file,
+    write_file      => \&_tool_write_file,
+    edit_file       => \&_tool_edit_file,
+    list_dir        => \&_tool_list_dir,
+    run_shell       => \&_tool_run_shell,
+    invoke_subagent => \&_tool_invoke_subagent,
+);
+
+sub run_tool {
+    my ($name, $input) = @_;
+    $input = {} unless ref($input) eq 'HASH';
+
+    if (exists $input->{_arg_parse_error}) {
+        my $err = defined $input->{_arg_parse_error} ? $input->{_arg_parse_error} : 'invalid JSON';
+        return "Error: tool arguments for '$name' were truncated or invalid JSON ($err). Please retry the tool call with valid JSON and more concise arguments or smaller chunks.";
+    }
+
+    if (my $handler = $BUILTIN_TOOL_HANDLERS{$name}) {
+        return $handler->($input);
+    }
+    if (exists $MCP_TOOLS{$name} || (defined $name && $name =~ /^mcp__/)) {
+        return mcp_execute_tool($name, $input);
+    }
+    return "Unknown tool: $name";
+}
+
+sub _normalize_subagent_type {
+    my ($type) = @_;
+    return (defined $type && ($type eq 'plan' || $type eq 'build')) ? $type : 'build';
+}
+
+sub _extract_subagent_turn_blocks {
+    my ($content_blocks_ref) = @_;
+    my @tool_calls;
+    my $turn_text = '';
+    for my $block (@$content_blocks_ref) {
+        if ($block->{type} eq 'text') {
+            $turn_text .= $block->{text};
+        }
+        elsif ($block->{type} eq 'tool_use') {
+            push @tool_calls, $block;
+        }
+    }
+    return ($turn_text, \@tool_calls);
+}
+
+sub _should_continue_subagent_turn {
+    my ($resp, $content_blocks_ref, $turn_text) = @_;
+    return 1 if is_response_truncated($resp);
+    return 1 if has_thinking_block($content_blocks_ref) && $turn_text !~ /\S/;
+    return 0;
+}
+
+sub _build_subagent_continuation_prompt {
+    my ($turn, $max_turns, $turns_left) = @_;
+    my $countdown_note = get_subagent_countdown_note($turn, $max_turns, $turns_left);
+    return "Your previous response ended or was cut off before emitting any tool calls or final summary. "
+         . "Please continue directly from where you left off and emit your next tool calls or final summary concisely without repeating your previous reasoning.\n\n$countdown_note";
+}
+
+sub _execute_subagent_tool_call {
+    my ($subagent_type, $t_name, $t_input) = @_;
+    if ($subagent_type eq 'plan' && $t_name ne 'read_file' && $t_name ne 'list_dir') {
+        return "Error: tool '$t_name' is not permitted for 'plan' sub-agent (read-only mode).";
+    }
+    if ($t_name eq 'invoke_subagent') {
+        return "Error: sub-agents cannot invoke sub-agents.";
+    }
+    record_session_tool_call($t_name, $CURRENT_SESSION);
+    return run_tool($t_name, $t_input);
+}
+
+sub _run_subagent_tool_calls {
+    my ($subagent_type, $turn, $max_turns, $turns_left, $tool_calls_ref) = @_;
+    my $countdown_note = get_subagent_countdown_note($turn, $max_turns, $turns_left);
+    my @tool_results;
+
+    for my $call (@$tool_calls_ref) {
+        my $t_name  = $call->{name};
+        my $t_input = $call->{input};
+
+        print format_subagent_tool_call($subagent_type, $turn, $max_turns, $t_name, $t_input);
+
+        my $result = _execute_subagent_tool_call($subagent_type, $t_name, $t_input);
+        my $fenced_result = format_tool_result($t_name, $result);
+
+        push @tool_results, {
+            type        => 'tool_result',
+            tool_use_id => $call->{id},
+            name        => $t_name,
+            content     => "$fenced_result\n\n$countdown_note",
+        };
+    }
+    return \@tool_results;
+}
+
+sub _handle_subagent_error {
+    my ($subagent_type, $turn, $status, $prefix, $err_msg) = @_;
+    print clear_thinking_line() if -t STDOUT;
+    cursor_show();
+    print format_subagent_finish($subagent_type, $turn, $status);
+    return "$prefix: $err_msg";
+}
+
+sub _fetch_subagent_turn {
+    my ($subagent_type, $turn, $messages_ref, $tools_ref, $effective_prompt) = @_;
+    my $body = build_request($messages_ref, $tools_ref, $effective_prompt);
+    my $resp = eval { call_api($API_URL, build_headers(), MiniJSON::encode($body)) };
+    if ($@) {
+        return (undef, undef, _handle_subagent_error($subagent_type, $turn, "Failed: API error", "API error in sub-agent", $@));
+    }
+
+    record_session_api_usage($resp, $CURRENT_SESSION);
+
+    my @content_blocks = eval { parse_response($resp) };
+    if ($@) {
+        return (undef, undef, _handle_subagent_error($subagent_type, $turn, "Failed: parse error", "Response parsing error in sub-agent", $@));
+    }
+
+    print clear_thinking_line() if -t STDOUT;
+    push @$messages_ref, { role => 'assistant', content => \@content_blocks };
+    return ($resp, \@content_blocks, undef);
+}
+
+sub _finalize_subagent_text {
+    my ($text) = @_;
+    return $text if defined $text && $text =~ /\S/;
+    return "(Sub-agent completed without returning text summary)";
+}
+
+sub _format_subagent_max_turns_summary {
+    my ($max_turns, $turn_text) = @_;
+    my $last = (defined $turn_text && length $turn_text) ? $turn_text : '(no text output)';
+    return "Sub-agent reached maximum turn limit ($max_turns). Last output: $last";
+}
+
+sub _can_continue_subagent {
+    my ($turn, $max_turns, $cont_count, $max_cont, $resp, $blocks_ref, $turn_text) = @_;
+    return 0 unless $turn < $max_turns && $cont_count < $max_cont;
+    return _should_continue_subagent_turn($resp, $blocks_ref, $turn_text);
 }
 
 sub run_subagent {
     my ($task, $subagent_type) = @_;
-    $subagent_type = 'build' unless defined $subagent_type && length $subagent_type;
-    $subagent_type = 'build' unless $subagent_type eq 'plan' || $subagent_type eq 'build';
+    $subagent_type = _normalize_subagent_type($subagent_type);
 
     my $max_turns = 50;
+    my $max_continuations = 3;
     my $tools_ref = get_subagent_tools($subagent_type);
     my $effective_prompt = get_subagent_system_prompt($subagent_type, $max_turns);
     my $initial_prompt   = get_subagent_initial_prompt($task, $max_turns);
@@ -578,106 +772,50 @@ sub run_subagent {
     };
 
     local $CURRENT_SUBAGENT_TYPE = $subagent_type;
-
     record_session_subagent_call($CURRENT_SESSION);
-
     print format_subagent_start($subagent_type, $task);
 
     my $turn = 0;
+    my $continuation_count = 0;
+    my $accumulated_text = '';
     my $final_text = '';
 
     while ($turn < $max_turns) {
         $turn++;
         my $turns_left = $max_turns - $turn;
 
-        my $body = build_request($sub_session->{messages}, $tools_ref, $effective_prompt);
-        my $resp = eval { call_api($API_URL, build_headers(), MiniJSON::encode($body)) };
-        if ($@) {
-            print clear_thinking_line() if -t STDOUT;
-            cursor_show();
-            my $err = "API error in sub-agent: $@";
-            print format_subagent_finish($subagent_type, $turn, "Failed: API error");
-            return $err;
-        }
+        my ($resp, $blocks_ref, $err) = _fetch_subagent_turn(
+            $subagent_type, $turn, $sub_session->{messages}, $tools_ref, $effective_prompt
+        );
+        return $err if defined $err;
 
-        record_session_api_usage($resp, $CURRENT_SESSION);
+        my ($turn_text, $tool_calls_ref) = _extract_subagent_turn_blocks($blocks_ref);
 
-        my @content_blocks = eval { parse_response($resp) };
-        if ($@) {
-            print clear_thinking_line() if -t STDOUT;
-            cursor_show();
-            my $err = "Response parsing error in sub-agent: $@";
-            print format_subagent_finish($subagent_type, $turn, "Failed: parse error");
-            return $err;
-        }
-
-        if (-t STDOUT) {
-            print clear_thinking_line();
-        }
-
-        push @{$sub_session->{messages}}, { role => 'assistant', content => \@content_blocks };
-
-        my @tool_calls;
-        my $turn_text = '';
-        for my $block (@content_blocks) {
-            if ($block->{type} eq 'text') {
-                $turn_text .= $block->{text};
+        if (!@$tool_calls_ref) {
+            $accumulated_text .= $turn_text;
+            if (_can_continue_subagent($turn, $max_turns, $continuation_count, $max_continuations, $resp, $blocks_ref, $turn_text)) {
+                $continuation_count++;
+                my $cont_prompt = _build_subagent_continuation_prompt($turn, $max_turns, $turns_left);
+                push @{$sub_session->{messages}}, { role => 'user', content => $cont_prompt };
+                next;
             }
-            elsif ($block->{type} eq 'tool_use') {
-                push @tool_calls, $block;
-            }
-        }
-
-        if (!@tool_calls) {
-            $final_text = $turn_text;
+            $final_text = $accumulated_text;
             print format_subagent_finish($subagent_type, $turn, "Completed");
             last;
         }
 
-        my @tool_results;
-        for my $call (@tool_calls) {
-            my $t_name  = $call->{name};
-            my $t_input = $call->{input};
-
-            print format_subagent_tool_call($subagent_type, $turn, $max_turns, $t_name, $t_input);
-
-            my $result;
-            if ($subagent_type eq 'plan' && $t_name ne 'read_file' && $t_name ne 'list_dir') {
-                $result = "Error: tool '$t_name' is not permitted for 'plan' sub-agent (read-only mode).";
-            }
-            elsif ($t_name eq 'invoke_subagent') {
-                $result = "Error: sub-agents cannot invoke sub-agents.";
-            }
-            else {
-                record_session_tool_call($t_name, $CURRENT_SESSION);
-                $result = run_tool($t_name, $t_input);
-            }
-
-            my $fenced_result = format_tool_result($t_name, $result);
-            my $countdown_note = get_subagent_countdown_note($turn, $max_turns, $turns_left);
-            my $content_with_countdown = "$fenced_result\n\n$countdown_note";
-
-            push @tool_results, {
-                type        => 'tool_result',
-                tool_use_id => $call->{id},
-                name        => $t_name,
-                content     => $content_with_countdown,
-            };
-        }
-
-        push @{$sub_session->{messages}}, { role => 'user', content => \@tool_results };
+        $continuation_count = 0;
+        $accumulated_text = '';
+        my $tool_results_ref = _run_subagent_tool_calls($subagent_type, $turn, $max_turns, $turns_left, $tool_calls_ref);
+        push @{$sub_session->{messages}}, { role => 'user', content => $tool_results_ref };
 
         if ($turn >= $max_turns) {
             print format_subagent_finish($subagent_type, $turn, "Reached max turns ($max_turns)");
-            $final_text = "Sub-agent reached maximum turn limit ($max_turns). Last output: " . ($turn_text || '(no text output)');
+            $final_text = _format_subagent_max_turns_summary($max_turns, $turn_text);
             last;
         }
     }
 
-    if (!defined $final_text || $final_text !~ /\S/) {
-        $final_text = "(Sub-agent completed without returning text summary)";
-    }
-
-    return $final_text;
+    return _finalize_subagent_text($final_text);
 }
 

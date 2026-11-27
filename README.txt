@@ -24,7 +24,7 @@ Once started, you can chat with the agent or enter slash commands:
 - /compact : Compact history by truncating older tool results for slow CPUs
 - /stats   : View current session statistics (duration, tokens, turns, tools)
 - /models  : View and switch available AI models
-- /ctx     : View or set max output tokens per response (default: 4k; e.g. /ctx 64k, /ctx 65536)
+- /ctx     : View or set max output tokens per response (default: 16k; e.g. /ctx 64k, /ctx 65536)
 - /mcp     : Manage remote MCP servers and tools (/mcp list, add, remove, refresh)
 - /claude  : Switch to Anthropic Claude
 - /gemini  : Switch to Google Gemini

@@ -89,7 +89,8 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `parse_response($response_json)`: Decodes provider response into uniform text or tool-call structures, automatically merging consecutive text or thinking blocks into unified continuous content.
 - `parse_response_anthropic($data)`: Extracts text and `tool_use` blocks from Anthropic API responses.
 - `parse_response_gemini($data)`: Extracts text candidates and `functionCall` items from Gemini responses, merging consecutive text and thinking parts into continuous blocks.
-- `parse_response_openai($data)`: Extracts messages and `tool_calls` from OpenAI responses.
+- `parse_response_openai($data)`: Extracts messages and `tool_calls` from OpenAI responses, tagging non-empty malformed or truncated JSON arguments with `_arg_parse_error` and `_raw_arguments`.
+- `is_response_truncated($resp, [$provider])`: Detects whether a generation stopped due to hitting the output token limit across OpenAI (`finish_reason eq 'length' | 'max_tokens'`), Anthropic (`stop_reason eq 'max_tokens'`), and Gemini (`finishReason eq 'MAX_TOKENS'`).
 
 #### Interactive Terminal Engine & ANSI Helpers
 - `read_line_interactive($prompt)`: Full raw-mode terminal reader with ANSI line editing, history, wrapping, and multibyte UTF-8 handling.
@@ -130,9 +131,12 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `confirm($prompt)`: Displays an interactive `[y/N]` prompt requiring affirmative user consent.
 - `confirm_tool($prompt)`: Tool permission gate returning `1` if `$AUTO_MODE` is enabled, or delegating to `confirm($prompt)` in manual mode (prefixed with `[Sub-agent: $type]` when invoked under a sub-agent).
 - `format_tool_result($name, $result)`: Wraps outputs of untrusted-data tools (`read_file`, `list_dir`, `run_shell`, `invoke_subagent`) in `<untrusted_tool_output tool="$name">...</untrusted_tool_output>` fences after escaping any embedded closing `</untrusted_tool_output>` tags (`<\/untrusted_tool_output>`).
-- `run_tool($name, $input)`: Executes requested agent tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`, `invoke_subagent`), gating side effects through `confirm_tool()`.
+- `resolve_path_param($input)`: Resolves path parameter aliases (`path`, `file_path`, `filepath`, `filename`, `file`, `dir`, `directory`).
+- `resolve_content_param($input, @extra_keys)`: Resolves content parameter aliases (`content`, plus optional `@extra_keys`, `text`, `data`, `body`).
+- `resolve_command_param($input)`: Resolves command parameter aliases (`command`, `cmd`, `script`, `shell_command`).
+- `run_tool($name, $input)`: Executes requested agent tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`, `invoke_subagent`), rejecting malformed tool arguments (`_arg_parse_error`), validating required parameters before `confirm_tool()`, and auto-creating missing parent directories in `write_file`.
 - `get_subagent_tools($type)`: Returns filtered tool list for sub-agents (`plan`: strictly read-only `read_file` and `list_dir`; `build`: full tools excluding recursive `invoke_subagent`).
-- `run_subagent($task, $subagent_type)`: Executes synchronous turn-based sub-agent loop up to 50 turns with isolated conversation session, turn countdown context injection, and visual tree formatting.
+- `run_subagent($task, $subagent_type)`: Executes synchronous turn-based sub-agent loop up to 50 turns with isolated conversation session, turn countdown context injection, auto-continuation on truncated or thinking-only turns, and visual tree formatting.
 
 #### Remote Model Context Protocol (MCP) Client (`src/mcp.pl`)
 - `get_mcp_config_path()`: Discovers configuration file path checking `CLAUDE_MCP_CONFIG`, `./mcp_servers.json`, and `~/.code-agent/mcp.json`.
