@@ -15,6 +15,8 @@ use utf8;
 use Encode qw(decode encode FB_DEFAULT);
 use POSIX qw(WNOHANG);
 use File::Temp qw(tempfile tempdir);
+use File::Basename qw(dirname);
+use File::Path qw(mkpath);
 
 # Explicitly handle screen output as UTF-8.
 binmode STDOUT, ':encoding(UTF-8)';
@@ -69,7 +71,7 @@ sub format_context_size {
     return "$tokens";
 }
 
-our $MAX_TOKENS = 4096;
+our $MAX_TOKENS = 16384;
 
 sub init_max_tokens {
     my $raw_env = (defined $ENV{CLAUDE_MAX_TOKENS} && length $ENV{CLAUDE_MAX_TOKENS})

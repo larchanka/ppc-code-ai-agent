@@ -301,6 +301,22 @@ sub parse_response {
     return _merge_consecutive_blocks(@blocks);
 }
 
+sub _decode_openai_tool_args {
+    my ($args) = @_;
+    return {} if !defined $args || (!ref($args) && $args =~ /^\s*$/);
+    return $args if ref($args) eq 'HASH';
+
+    my $decoded = eval { MiniJSON::decode($args) };
+    return $decoded if !$@ && ref($decoded) eq 'HASH';
+
+    my $err = $@ ? "$@" : "Decoded arguments did not produce a JSON object";
+    $err =~ s/\s+$//;
+    return {
+        _arg_parse_error => $err,
+        _raw_arguments   => $args,
+    };
+}
+
 sub parse_response_openai {
     my ($resp) = @_;
     if ($resp->{error}) {
@@ -321,8 +337,7 @@ sub parse_response_openai {
         push @blocks, { type => 'text', text => $msg->{content} };
     }
     for my $tc (@{ $msg->{tool_calls} || [] }) {
-        my $args = $tc->{function}{arguments};
-        my $input = eval { MiniJSON::decode($args) } || {};
+        my $input = _decode_openai_tool_args($tc->{function}{arguments});
         push @blocks, {
             type  => 'tool_use',
             id    => $tc->{id} || ('call-' . scalar(@blocks)),
@@ -404,6 +419,31 @@ sub has_thinking_block {
     for my $b (@$blocks) {
         return 1 if ref $b eq 'HASH' && defined $b->{type} && $b->{type} eq 'thinking';
     }
+    return 0;
+}
+
+sub is_response_truncated {
+    my ($resp, $provider) = @_;
+    return 0 unless defined $resp && ref($resp) eq 'HASH';
+    $provider = $PROVIDER unless defined $provider;
+
+    if (defined $provider && $provider eq 'gemini') {
+        my $cand = (ref($resp->{candidates}) eq 'ARRAY' && $resp->{candidates}[0])
+            ? $resp->{candidates}[0] : undef;
+        return 1 if ref($cand) eq 'HASH'
+            && defined $cand->{finishReason}
+            && $cand->{finishReason} eq 'MAX_TOKENS';
+        return 0;
+    }
+    if (defined $provider && $provider eq 'openai') {
+        my $choice = (ref($resp->{choices}) eq 'ARRAY' && $resp->{choices}[0])
+            ? $resp->{choices}[0] : undef;
+        return 1 if ref($choice) eq 'HASH'
+            && defined $choice->{finish_reason}
+            && ($choice->{finish_reason} eq 'length' || $choice->{finish_reason} eq 'max_tokens');
+        return 0;
+    }
+    return 1 if defined $resp->{stop_reason} && $resp->{stop_reason} eq 'max_tokens';
     return 0;
 }
 

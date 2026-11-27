@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Test::More tests => 39;
+use Test::More tests => 50;
 use File::Basename qw(dirname);
 use Cwd qw(abs_path);
 
@@ -130,6 +130,51 @@ is(format_tool_summary('write_file', { content => 'test' }),
 is(format_tool_summary('edit_file', { start_line => 1, end_line => 2, content => 'new' }),
    'edit_file   ?   L1-2   new',
    'format_tool_summary: edit_file with missing path falls back to ?');
+
+# parameter aliases in format_tool_summary
+is(format_tool_summary('read_file', { file_path => '/a/b/plan.md', start_line => 1, end_line => 5 }),
+   'read_file   plan.md   L1-5',
+   'format_tool_summary: read_file with file_path alias');
+
+is(format_tool_summary('read_file', { filepath => '/a/b/spec.md' }),
+   'read_file   spec.md',
+   'format_tool_summary: read_file with filepath alias');
+
+is(format_tool_summary('read_file', { filename => '/a/b/notes.txt' }),
+   'read_file   notes.txt',
+   'format_tool_summary: read_file with filename alias');
+
+is(format_tool_summary('read_file', { file => '/a/b/main.pl' }),
+   'read_file   main.pl',
+   'format_tool_summary: read_file with file alias');
+
+is(format_tool_summary('write_file', { filepath => 'tasks/todo.md', text => 'checklist item' }),
+   'write_file   todo.md   checklist item',
+   'format_tool_summary: write_file with filepath and text aliases');
+
+is(format_tool_summary('write_file', { file_path => 'tasks/data.txt', data => 'data payload' }),
+   'write_file   data.txt   data payload',
+   'format_tool_summary: write_file with file_path and data aliases');
+
+is(format_tool_summary('write_file', { filename => 'tasks/out.txt', body => 'body content' }),
+   'write_file   out.txt   body content',
+   'format_tool_summary: write_file with filename and body aliases');
+
+is(format_tool_summary('edit_file', { file => 'src/tools.pl', start_line => 10, end_line => 12, new_text => 'updated code' }),
+   'edit_file   tools.pl   L10-12   updated code',
+   'format_tool_summary: edit_file with file and new_text aliases');
+
+is(format_tool_summary('run_shell', { cmd => 'prove -I. t/*.t' }),
+   'run_shell   prove -I. t/*.t',
+   'format_tool_summary: run_shell with cmd alias');
+
+is(format_tool_summary('list_dir', { dir => 'tasks/sub' }),
+   'list_dir   sub',
+   'format_tool_summary: list_dir with dir alias');
+
+is(format_tool_summary('write_file', { _arg_parse_error => 'Unexpected EOF', _raw_arguments => '{"path":' }),
+   'write_file   ?',
+   'format_tool_summary: write_file with _arg_parse_error does not leak error into summary');
 
 # ==================================================================
 # 4. format_tool_call & $COLOR_DIM tests

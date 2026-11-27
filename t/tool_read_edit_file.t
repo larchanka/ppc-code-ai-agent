@@ -536,4 +536,164 @@ like($SYSTEM_PROMPT, qr/prefer\s+`?edit_file`?\s+over\s+`?write_file`?/i, "SYSTE
 like($SYSTEM_PROMPT, qr/chaining|chained bash/i, "SYSTEM_PROMPT instructs chaining shell commands");
 like($SYSTEM_PROMPT, qr/save turns|turn_economy/i, "SYSTEM_PROMPT explains turn economy rationale");
 
+# ==================================================================
+# Task 4: _arg_parse_error guard, parameter aliases, pre-confirm validation, and auto-mkdir
+# ==================================================================
+
+# 1. _arg_parse_error short-circuits run_tool before confirm_tool
+{
+    set_auto_mode(0);
+    my $confirm_called = 0;
+    no warnings 'redefine';
+    local *confirm = sub { $confirm_called++; return 1; };
+
+    my $openai_resp = {
+        choices => [
+            {
+                message => {
+                    tool_calls => [
+                        {
+                            id       => 'call_trunc_1',
+                            function => {
+                                name      => 'write_file',
+                                arguments => '{"path":"foo.txt","content":"unterminated',
+                            },
+                        },
+                    ],
+                },
+            },
+        ],
+    };
+    my @blocks = parse_response_openai($openai_resp);
+    is(scalar(@blocks), 1, "parse_response_openai returned 1 tool_use block for truncated args");
+    ok(exists $blocks[0]{input}{_arg_parse_error}, "_arg_parse_error is populated on truncated JSON arguments");
+
+    my $res = run_tool($blocks[0]{name}, $blocks[0]{input});
+    like(
+        $res,
+        qr/^Error: tool arguments for 'write_file' were truncated or invalid JSON\b/,
+        "run_tool rejects _arg_parse_error with actionable message"
+    );
+    is($confirm_called, 0, "confirm() was not called when _arg_parse_error is present");
+}
+
+# 2. Pre-confirmation validation with zero Perl warnings
+{
+    set_auto_mode(0);
+    my $confirm_called = 0;
+    no warnings 'redefine';
+    local *confirm = sub { $confirm_called++; return 1; };
+
+    my @warnings_caught;
+    local $SIG{__WARN__} = sub { push @warnings_caught, $_[0]; };
+
+    is(
+        run_tool('read_file', {}),
+        "Error: missing required 'path' parameter",
+        "read_file with missing path returns clear error"
+    );
+    is(
+        run_tool('write_file', { content => 'hello' }),
+        "Error: missing required 'path' parameter",
+        "write_file with missing path returns clear error before confirm"
+    );
+    is(
+        run_tool('write_file', { path => "$temp_dir/no_content.txt" }),
+        "Error: missing required 'content' parameter",
+        "write_file with missing content returns clear error before confirm"
+    );
+    is(
+        run_tool('edit_file', { start_line => 1, end_line => 1, content => 'x' }),
+        "Error: missing required 'path' parameter",
+        "edit_file with missing path returns clear error"
+    );
+    is(
+        run_tool('run_shell', {}),
+        "Error: missing required 'command' parameter",
+        "run_shell with missing command returns clear error before confirm"
+    );
+    is($confirm_called, 0, "confirm() was never called when required parameters were missing");
+    is(scalar(@warnings_caught), 0, "zero Perl uninitialized value warnings on missing parameters");
+}
+
+# 3. Parameter aliases in read_file, write_file, edit_file, list_dir, run_shell
+{
+    set_auto_mode(1);
+    my $alias_file = "$temp_dir/alias_target.txt";
+
+    # write_file with file_path + text
+    my $w_res = run_tool('write_file', { file_path => $alias_file, text => "Line A\nLine B\n" });
+    is($w_res, "Write complete: $alias_file", "write_file succeeds with file_path and text aliases");
+    is(read_file_raw($alias_file), "Line A\nLine B\n", "write_file wrote expected content via aliases");
+
+    # write_file with filepath + data
+    my $w_res2 = run_tool('write_file', { filepath => $alias_file, data => "Data 1\nData 2\n" });
+    is($w_res2, "Write complete: $alias_file", "write_file succeeds with filepath and data aliases");
+
+    # write_file with filename + body
+    my $w_res3 = run_tool('write_file', { filename => $alias_file, body => "Body 1\nBody 2\n" });
+    is($w_res3, "Write complete: $alias_file", "write_file succeeds with filename and body aliases");
+
+    # read_file with file_path / filepath / filename / file
+    is(run_tool('read_file', { file_path => $alias_file }), "Body 1\nBody 2\n", "read_file supports file_path alias");
+    is(run_tool('read_file', { filepath  => $alias_file }), "Body 1\nBody 2\n", "read_file supports filepath alias");
+    is(run_tool('read_file', { filename  => $alias_file }), "Body 1\nBody 2\n", "read_file supports filename alias");
+    is(run_tool('read_file', { file      => $alias_file }), "Body 1\nBody 2\n", "read_file supports file alias");
+
+    # edit_file with file_path + new_text / text
+    my $e_res = run_tool('edit_file', {
+        file_path  => $alias_file,
+        start_line => 2,
+        end_line   => 2,
+        new_text   => "Body 2 updated\n",
+    });
+    is($e_res, "Edit complete: $alias_file", "edit_file supports file_path and new_text aliases");
+    is(read_file_raw($alias_file), "Body 1\nBody 2 updated\n", "edit_file updated line via new_text alias");
+
+    my $e_res2 = run_tool('edit_file', {
+        file       => $alias_file,
+        start_line => 1,
+        end_line   => 1,
+        text       => "Body 1 updated\n",
+    });
+    is($e_res2, "Edit complete: $alias_file", "edit_file supports file and text aliases");
+    is(read_file_raw($alias_file), "Body 1 updated\nBody 2 updated\n", "edit_file updated line via text alias");
+
+    # list_dir with dir / directory / file_path
+    my $ld_res = run_tool('list_dir', { dir => $temp_dir });
+    like($ld_res, qr/alias_target\.txt/, "list_dir supports dir alias");
+
+    # run_shell with cmd
+    my $sh_res = run_tool('run_shell', { cmd => 'echo alias_shell_ok' });
+    like($sh_res, qr/alias_shell_ok/, "run_shell supports cmd alias");
+}
+
+# 4. Auto-create missing parent directories in write_file
+{
+    set_auto_mode(1);
+    my $nested_path = "$temp_dir/deep/nested/dir/plan.md";
+    ok(!-d "$temp_dir/deep", "parent directory does not exist before write_file");
+
+    my $res = run_tool('write_file', {
+        path    => $nested_path,
+        content => "# Nested Plan\n",
+    });
+    is($res, "Write complete: $nested_path", "write_file auto-creates missing parent directories");
+    ok(-f $nested_path, "nested file exists after write_file");
+    is(read_file_raw($nested_path), "# Nested Plan\n", "nested file content matches");
+
+    # Parent directory creation is skipped when user cancels confirmation
+    set_auto_mode(0);
+    my $cancelled_nested = "$temp_dir/unapproved_dir/sub/file.txt";
+    no warnings 'redefine';
+    local *confirm = sub { return 0; };
+    my $cancel_res = run_tool('write_file', {
+        path    => $cancelled_nested,
+        content => "should not write\n",
+    });
+    is($cancel_res, "Cancelled by user.", "write_file cancelled by user for nested path");
+    ok(!-d "$temp_dir/unapproved_dir", "parent directory was NOT created when user cancelled write_file");
+    set_auto_mode(1);
+}
+
 done_testing();
