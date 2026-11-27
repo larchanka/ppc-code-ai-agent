@@ -696,4 +696,53 @@ like($SYSTEM_PROMPT, qr/save turns|turn_economy/i, "SYSTEM_PROMPT explains turn 
     set_auto_mode(1);
 }
 
+# 5. Zero stderr leakage in run_shell on chained commands and shell keywords (time)
+{
+    set_auto_mode(1);
+
+    # Capture STDERR while executing run_shell to verify zero stderr leakage to terminal
+    my $stderr_captured = '';
+    my $out_captured;
+    {
+        my $tmp_err = "$temp_dir/stderr_leak_test.log";
+        open(my $saved_err, ">&STDERR") or die "cannot dup STDERR: $!";
+        open(STDERR, '>', $tmp_err) or die "cannot redirect STDERR: $!";
+
+        $out_captured = run_tool('run_shell', {
+            command => 'echo "chained_err_1" >&2 && echo "chained_out_2"',
+        });
+
+        open(STDERR, ">&", $saved_err);
+        close $saved_err;
+
+        $stderr_captured = read_file_raw($tmp_err);
+        unlink $tmp_err;
+    }
+
+    is($stderr_captured, '', "run_shell does not leak stderr to terminal on chained commands (&&)");
+    like($out_captured, qr/chained_err_1/, "run_shell captures stderr from preceding chained command into result");
+    like($out_captured, qr/chained_out_2/, "run_shell captures stdout from final chained command into result");
+
+    # time keyword in bash/sh
+    {
+        my $tmp_err2 = "$temp_dir/time_leak_test.log";
+        open(my $saved_err2, ">&STDERR") or die "cannot dup STDERR: $!";
+        open(STDERR, '>', $tmp_err2) or die "cannot redirect STDERR: $!";
+
+        my $time_res = run_tool('run_shell', {
+            command => 'time echo "time_test_ok"',
+        });
+
+        open(STDERR, ">&", $saved_err2);
+        close $saved_err2;
+
+        my $time_err = read_file_raw($tmp_err2);
+        unlink $tmp_err2;
+
+        is($time_err, '', "run_shell does not leak time keyword stderr to terminal");
+        like($time_res, qr/time_test_ok/, "run_shell captures command output when using time");
+        like($time_res, qr/real\s+\d/m, "run_shell captures time keyword stats into result");
+    }
+}
+
 done_testing();

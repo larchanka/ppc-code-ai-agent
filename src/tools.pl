@@ -600,7 +600,8 @@ sub _tool_run_shell {
     my $command = resolve_command_param($input);
     return "Error: missing required 'command' parameter" unless defined $command;
     return "Cancelled by user." unless confirm_tool("Run this command: $command");
-    my $output = `$command 2>&1`;
+    return '(no output)' if index($command, "\0") >= 0;
+    my $output = `(\n$command\n) 2>&1`;
     return (!defined $output || $output eq '') ? '(no output)' : $output;
 }
 
