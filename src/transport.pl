@@ -179,9 +179,10 @@ sub _call_api_once {
     # $headers is an arrayref of header strings (e.g. "x-api-key: ...").
     # Thin transport layer that takes URL/headers from outside per provider;
     # this sub itself has no knowledge of whether it's Anthropic or Gemini.
-    my ($url, $headers, $body_json, $method) = @_;
+    my ($url, $headers, $body_json, $method, $opts) = @_;
     $method = defined $method ? uc($method) : 'POST';
     my $has_body = _has_request_body($method, $body_json);
+    my $silent = (defined $opts && ref($opts) eq 'HASH' && $opts->{silent}) ? 1 : 0;
 
     my $tmp_req    = _create_secure_tempfile('req', '.json');
     my $tmp_resp   = _create_secure_tempfile('resp', '.json');
@@ -193,11 +194,13 @@ sub _call_api_once {
         _write_curl_config($tmp_config, $tmp_req, $tmp_resp, $url, $method, $headers, $body_json, $has_body);
 
         my $start_time = time();
-        my $use_live_timer = (_is_tty_active() && $has_body) ? 1 : 0;
+        my $use_live_timer = (!$silent && _is_tty_active() && $has_body) ? 1 : 0;
         $http_code = _execute_curl($tmp_config, $tmp_status, $use_live_timer, $start_time);
 
-        $LAST_API_ELAPSED = int(time() - $start_time);
-        $LAST_API_ELAPSED = 1 if $LAST_API_ELAPSED < 1;
+        unless ($silent) {
+            $LAST_API_ELAPSED = int(time() - $start_time);
+            $LAST_API_ELAPSED = 1 if $LAST_API_ELAPSED < 1;
+        }
 
         # For the same reason as STDIN (see comments at top), we do not use the
         # :encoding(UTF-8) layer here. In Perl 5.8.6, PerlIO :encoding(UTF-8) can split
@@ -221,13 +224,15 @@ sub _call_api_once {
 }
 
 sub call_api {
-    my ($url, $headers, $body_json, $method) = @_;
-    my $max_retries = get_max_retries();
-    my $show_retry  = _is_tty_active() && _has_request_body($method, $body_json);
+    my ($url, $headers, $body_json, $method, $opts) = @_;
+    my $silent   = (defined $opts && ref($opts) eq 'HASH' && $opts->{silent}) ? 1 : 0;
+    my $no_retry = (defined $opts && ref($opts) eq 'HASH' && $opts->{no_retry}) ? 1 : 0;
+    my $max_retries = $no_retry ? 0 : get_max_retries();
+    my $show_retry  = (!$silent && _is_tty_active() && _has_request_body($method, $body_json));
 
     my $last_err = '';
     for (my $attempt = 0; $attempt <= $max_retries; $attempt++) {
-        my $resp = eval { _call_api_once($url, $headers, $body_json, $method) };
+        my $resp = eval { _call_api_once($url, $headers, $body_json, $method, $opts) };
         if (!$@) {
             return $resp;
         }

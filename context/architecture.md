@@ -92,17 +92,21 @@ graph TD
   - `handle_auto_command($out_fh)` & `handle_manual_command($out_fh)`: Slash command handlers (`/auto`, `/manual`) toggling `$AUTO_MODE`.
   - `get_auto_mode()` & `set_auto_mode($val)`: Encapsulated accessors for `$AUTO_MODE`.
 
-### 5. Session Management & Lifecycle Layer
-- **Location**: [`code-agent.pl`](../code-agent.pl), [`src/session.pl`](../src/session.pl)
+### 5. Session Management & Persistence Layer
+- **Location**: [`code-agent.pl`](../code-agent.pl), [`src/session_store.pl`](../src/session_store.pl), [`src/session.pl`](../src/session.pl), [`src/sessions_menu.pl`](../src/sessions_menu.pl), [`src/ui.pl`](../src/ui.pl)
 - **Responsibilities**:
-  - `$CURRENT_SESSION`: Package-level session state holding `id`, `created_at`, `provider`, `model`, and `messages` arrayref.
-  - `generate_session_id()`: Generates unique timestamped session IDs (`session-YYYYMMDD-HHMMSS-NNN`) combining `localtime` and monotonic `$SESSION_COUNTER`.
-  - `init_session([$id])`: Instantiates a fresh session structure with an empty message list and sets `$CURRENT_SESSION`.
-  - `get_current_session()`: Lazy accessor ensuring active session availability.
-  - `archive_session($session)`: Lifecycle hook invoked immediately before session re-initialization to prepare for future disk persistence and continuation.
-  - `handle_new_command($out_fh, $session)`: Command handler for `/new` slash command that archives the current session, re-initializes `$CURRENT_SESSION`, and prints user confirmation.
-  - `compact_session_history()` & `auto_compact_session_if_needed()`: Context and token budgeting subsystem tailored for vintage PowerPC CPUs. Truncates large tool result outputs in older turns (beyond 4 user turns, or exceeding 100k characters / 10 turns) while strictly preserving `tool_use_id` / `tool_result` pair consistency.
-  - `handle_compact_command($out_fh, $session)`: Command handler for `/compact` slash command for on-demand context compaction.
+  - `$CURRENT_SESSION`: Package-level session state holding `id`, `title`, `title_attempted`, `cwd`, `created_at`, `updated_at`, `provider`, `model`, `messages` arrayref, and `stats`.
+  - `generate_session_id()`: Generates short human-friendly session IDs (`MMDD-XXXX`, e.g. `1128-a1b2`) combining date prefix and random hex suffix, verifying uniqueness against disk.
+  - **Persistent Storage Subsystem (`src/session_store.pl`)**: Serializes sessions to `~/.code-agent/sessions/<id>.json` using atomic temporary file writes (`atomic_write_file`) with strict `0600` permissions. Maintains a fast metadata cache in `index.json`, automatically rebuilt via `rebuild_sessions_index()` if corrupt or missing. Automatically enforces retention limits (`CLAUDE_MAX_SESSIONS`, default `100`), pruning oldest sessions by `updated_at`. Resolves exact IDs and case-insensitive unique prefixes via `resolve_session_id()`.
+  - **Automatic Saving & Titling**: Saves session state automatically after each assistant turn and upon exit. Generates a concise (< 25 char) title via LLM (`generate_and_set_session_title`) after the first turn, falling back to sanitized user prompt if offline or disabled via `CLAUDE_SESSION_AUTO_TITLE=0`.
+  - **Interactive Browser & Commands (`src/sessions_menu.pl`, `src/session.pl`)**:
+    - `/sessions`: Interactive arrow-key / digit-jump menu browsing recent sessions for current directory (non-TTY fallback supported).
+    - `/sessions all`: Browse recent sessions across all working directories.
+    - `/session <id>`: Switch directly to session by exact ID or prefix, triggering context reload and resume summary.
+    - `/session delete <id>`: Deletes saved session file and updates `index.json`.
+    - `/new`: Archives and saves current session, initializes a clean session, and resets turn context.
+  - **Resume Context Formatting**: `format_session_resume_summary()` in `src/ui.pl` displays session title, timestamps, message counts, and the last two interaction turns on resume.
+  - **Token Budgeting & Compaction**: `compact_session_history()` and `auto_compact_session_if_needed()` truncate older tool outputs (> 4 user turns back, or exceeding character/turn thresholds) while strictly preserving `tool_use_id` / `tool_result` pair consistency.
 
 ### 6. Remote Model Context Protocol (MCP) Client Layer
 - **Location**: [`code-agent.pl`](../code-agent.pl), [`src/mcp.pl`](../src/mcp.pl)
@@ -115,7 +119,7 @@ graph TD
 ### 7. Build & Modular Assembly Layer
 - **Location**: [`build.pl`](../build.pl), [`src/`](../src/), [`Install.command`](../Install.command), [`modern-install.command`](../modern-install.command)
 - **Responsibilities**:
-  - Modular decomposition of the monolithic codebase into 13 focused modules in `src/` (`header.pl`, `prompts.pl`, `json.pl`, `transport.pl`, `providers.pl`, `models_menu.pl`, `session.pl`, `tools.pl`, `mcp.pl`, `terminal.pl`, `markdown.pl`, `ui.pl`, `main.pl`).
+  - Modular decomposition of the monolithic codebase into 15 focused modules in `src/` (`header.pl`, `prompts.pl`, `json.pl`, `transport.pl`, `providers.pl`, `models_menu.pl`, `session_store.pl`, `session.pl`, `sessions_menu.pl`, `tools.pl`, `mcp.pl`, `terminal.pl`, `markdown.pl`, `ui.pl`, `main.pl`).
   - `build.pl`: Pure Perl 5.8.6 manifest-driven assembly script concatenating `src/*.pl` into the single-file distribution executable `code-agent.pl`, applying `chmod 0755`, and verifying syntax (`perl -c`).
   - Supports `--check` for CI/CD synchronization checks, and custom `--src-dir` and `--output` paths.
   - `Install.command`: Integrates automated `perl build.pl` rebuild when `build.pl` and `src/` are detected before deploying to `$BUILD_DIR/code-agent.pl` on PowerPC Tiger.

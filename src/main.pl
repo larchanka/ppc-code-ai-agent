@@ -80,8 +80,72 @@ sub handle_openai_switch {
     return 1;
 }
 
+sub parse_cli_args {
+    my ($args) = @_;
+    $args = \@ARGV unless defined $args;
+    my %opts;
+    my $i = 0;
+    while ($i < @$args) {
+        my $arg = $args->[$i];
+        if (defined $arg && $arg =~ /^--session=(.*)$/) {
+            $opts{session} = $1;
+        }
+        elsif (defined $arg && $arg eq '--session') {
+            if ($i + 1 < @$args && $args->[$i + 1] !~ /^--/) {
+                $i++;
+                $opts{session} = $args->[$i];
+            }
+            else {
+                $opts{session} = '';
+            }
+        }
+        $i++;
+    }
+    return \%opts;
+}
+
+sub init_startup_session {
+    my ($opts, $err_fh, $out_fh) = @_;
+    $err_fh ||= \*STDERR;
+    $out_fh ||= \*STDOUT;
+
+    if (defined $opts && exists $opts->{session}) {
+        my $target_id = $opts->{session};
+        if (!defined $target_id || length($target_id) == 0) {
+            print $err_fh "No session ID provided.\n";
+            return 0;
+        }
+
+        my $res = resolve_session_id($target_id);
+        if (!$res->{ok}) {
+            print $err_fh "$res->{error}\n";
+            return 0;
+        }
+
+        my $resolved_id = $res->{id};
+        my $loaded = load_session($resolved_id);
+        if (!defined $loaded || ref($loaded) ne 'HASH') {
+            print $err_fh "Failed to load session '$resolved_id'.\n";
+            return 0;
+        }
+
+        $CURRENT_SESSION = $loaded;
+        get_session_stats($CURRENT_SESSION);
+        return 1;
+    }
+
+    get_current_session();
+    return 1;
+}
+
 unless (caller) {
     load_env_file();
+
+    my $cli_opts = parse_cli_args(\@ARGV);
+    my $resumed_from_cli = (defined $cli_opts && exists $cli_opts->{session}) ? 1 : 0;
+    unless (init_startup_session($cli_opts)) {
+        exit 1;
+    }
 
     # Determine provider: if not explicitly specified, use Anthropic if key exists,
     # otherwise Gemini (free tier; new users are guided here).
@@ -107,18 +171,20 @@ unless (caller) {
         }
     }
 
-get_current_session();
+    mcp_init_all();
 
-mcp_init_all();
+    show_banner();
 
-show_banner();
+    if ($resumed_from_cli && defined $CURRENT_SESSION && ref($CURRENT_SESSION) eq 'HASH') {
+        format_session_resume_summary($CURRENT_SESSION);
+    }
 
 while (1) {
     my $input = read_line_interactive("\nUser> ${COLOR_RESET}", 1, $COLOR_USER);
     last unless defined $input;
     $input = decode('UTF-8', $input, FB_DEFAULT);
     next if $input eq '';
-    last if $input eq 'exit';
+    last if $input eq 'exit' || $input eq '/exit';
 
     if ($input eq '/help') {
         show_help();
@@ -127,6 +193,16 @@ while (1) {
 
     if ($input eq '/new') {
         handle_new_command();
+        next;
+    }
+
+    if ($input =~ m{^/sessions(?:\s+(.*))?$}i) {
+        handle_sessions_command($1);
+        next;
+    }
+
+    if ($input =~ m{^/session(?:\s+(.*))?$}) {
+        handle_session_command($1);
         next;
     }
 
@@ -283,7 +359,15 @@ while (1) {
 
         last;
     }
+
+    if ((!defined $session->{title} || $session->{title} eq '') && !$session->{title_attempted}) {
+        generate_and_set_session_title($CURRENT_SESSION, $input) if _has_assistant_message($session);
+    }
+
+    save_session($session);
 }
+
+save_session($CURRENT_SESSION) if defined $CURRENT_SESSION;
 
 print "\nGoodbye.\n";
 cursor_show();

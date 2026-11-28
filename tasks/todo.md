@@ -1,8 +1,17 @@
-# Task Breakdown: `/stats` Session Statistics Command
+# TODO: Session Persistence and Resumption
 
-- [x] 1. Session Stats Data Structure & Provider Token Extraction (`src/session.pl`, `src/providers.pl`)
-- [x] 2. Live Activity & Tool Call Tracking (`src/main.pl`, `src/tools.pl`, `src/session.pl`)
-- [x] 3. Formatting Engine & `handle_stats_command` (`src/session.pl`, `src/ui.pl`)
-- [x] 4. CLI Command Dispatch & Help Documentation (`src/main.pl`, `src/session.pl`)
-- [x] 5. Comprehensive Test Suite (`t/stats_command.t`)
-- [x] 6. Documentation & Build Assembly Synchronization (`README.md`, `README.txt`, `build.pl`, `code-agent.pl`)
+## Phase 1: Foundation
+- [x] **Task 1**: Short Session IDs & Persistent Storage Module (`src/session_store.pl`, `src/header.pl`, `src/session.pl`, `build.pl`, `t/build.t`, `t/new_command.t`, `t/session_store.t`)
+- [x] **Task 2**: Auto-Save Lifecycle Hooks & Quiet `call_api` Option (`src/transport.pl`, `src/session.pl`, `src/main.pl`, `t/session_persistence.t`)
+- [x] **Checkpoint 1**: Build sync, Perl 5.8.6 check, and Phase 1 tests pass
+
+## Phase 2: Auto-Titling & Session Commands
+- [x] **Task 3**: Auto-Title Generation via LLM with Fallback (`src/session.pl`, `src/main.pl`, `t/new_command.t`, `t/session_title.t`)
+- [x] **Task 4**: `/session <id>`, `/session delete <id>`, and Resume Summary (`src/ui.pl`, `src/session.pl`, `src/main.pl`, `t/session_commands.t`)
+- [x] **Checkpoint 2**: Build sync and Phase 1-2 tests pass
+
+## Phase 3: Interactive Menu, CLI Startup & Polish
+- [x] **Task 5**: Interactive `/sessions` & `/sessions all` Menu (`src/session.pl`, `src/main.pl`, `t/sessions_menu.t`)
+- [x] **Task 6**: CLI `--session <id>` Startup Flag & `Install.command` / `modern-install.command` Wrappers (`src/main.pl`, `Install.command`, `modern-install.command`, `t/session_cli.t`)
+- [x] **Task 7**: Update `AGENTS.md`, refresh context/symbol graphs, and run full verification suite
+- [x] **Checkpoint 3**: All tests (`prove -I. t/*.t`), Perl 5.8.6 check, `build.pl --check`, and `verify_context.py` pass

@@ -21,6 +21,8 @@ USING THE AGENT
 -------------------------
 Once started, you can chat with the agent or enter slash commands:
 - /new     : Start a new conversation (clears history and resets context)
+- /session : Switch to or delete a saved session (/session <id>, /session delete <id>)
+- /sessions: Interactive menu to browse and resume recent sessions (/sessions [all])
 - /compact : Compact history by truncating older tool results for slow CPUs
 - /stats   : View current session statistics (duration, tokens, turns, tools)
 - /models  : View and switch available AI models
@@ -34,9 +36,25 @@ Once started, you can chat with the agent or enter slash commands:
 - /help    : Show available commands
 - exit     : Exit the agent (or press Ctrl-D)
 
+You can also resume a previous session directly from the command line:
+    code --session <id>
+or
+    perl code-agent.pl --session <id>
+
 The agent can also autonomously delegate tasks to specialized sub-agents
 ("plan" for read-only exploration, "build" for implementation) with their
 own isolated context to keep conversation history clean.
+
+SESSION PERSISTENCE & RESUMPTION
+---------------------------------
+Conversations are automatically saved as schema-v1 JSON files with permissions
+0600 under ~/.code-agent/sessions/<id>.json, indexed in index.json:
+- Short session IDs: formatted as MMDD-XXXX (e.g. 1128-a1b2).
+- Automatic titles: generated after the first assistant response (< 25 chars).
+- Automatic saving: triggers after every assistant turn and upon exit.
+- Fast switching: use "/session <id>" (or unique prefix) to resume.
+- Interactive browser: use "/sessions" (current directory) or "/sessions all".
+- Pruning: automatically keeps the most recent 100 sessions (configurable).
 
 REMOTE MCP SUPPORT (MODEL CONTEXT PROTOCOL)
 --------------------------------------------
@@ -82,7 +100,7 @@ WHAT'S INSIDE
 - cacert.pem       : current CA certificate bundle
 - code-agent.pl    : the agent itself (single Perl file, no dependencies)
 - build.pl         : build script to reassemble code-agent.pl from src/
-- src/             : 13 modular source files for the agent (including prompts.pl, mcp.pl)
+- src/             : 15 modular source files for the agent (including prompts.pl, session_store.pl, sessions_menu.pl, mcp.pl)
 - scripts/         : verification and CI scripts (e.g. check_minimum_version.pl)
 - Install.command         : installer for PowerPC Mac OS X Tiger
 - modern-install.command  : installer for modern macOS (Intel/ARM) and Linux
@@ -102,6 +120,9 @@ Settings and API keys are stored in "$HOME/.code-agent/env" (permissions 0600):
 - CLAUDE_AUTO_COMPACT: Enable automatic tool result compaction (default: 1)
 - CLAUDE_COMPACT_THRESHOLD_CHARS: Chars threshold before auto-compaction (100000)
 - CLAUDE_COMPACT_THRESHOLD_TURNS: User turns threshold before auto-compaction (10)
+- CLAUDE_SESSIONS_DIR: Custom path for saved sessions directory (~/.code-agent/sessions)
+- CLAUDE_MAX_SESSIONS: Max saved sessions before auto-pruning oldest (default: 100)
+- CLAUDE_SESSION_AUTO_TITLE: Auto-generate session title via LLM (1 = enabled, 0 = disabled)
 - CLAUDE_MCP_CONFIG : Path to MCP configuration JSON file
 - CLAUDE_MCP_SERVERS: Inline JSON string of MCP server configurations
 

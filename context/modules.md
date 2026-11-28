@@ -61,12 +61,35 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 - `get_auto_mode()`: Returns current autonomous mode status (`0` or `1`).
 - `set_auto_mode($val)`: Sets `$AUTO_MODE` (`1` if truthy, `0` otherwise) and returns the normalized value.
 
-#### Session Management & Lifecycle
-- `generate_session_id()`: Generates unique timestamped session IDs (`session-YYYYMMDD-HHMMSS-NNN`) via monotonic counter and `localtime`.
-- `init_session([$id])`: Creates and sets `$CURRENT_SESSION` with metadata (`id`, `created_at`, `provider`, `model`) and a fresh empty `messages` arrayref.
+#### Session Management, Persistence & CLI
+- `generate_session_id()`: Generates short human-friendly session IDs (`MMDD-XXXX`, e.g. `1128-a1b2`) via date prefix and random hex suffix with collision check.
+- `init_session([$id])`: Creates and sets `$CURRENT_SESSION` with metadata (`id`, `title`, `title_attempted`, `cwd`, `created_at`, `updated_at`, `provider`, `model`, `stats`) and a fresh empty `messages` arrayref.
 - `get_current_session()`: Returns active `$CURRENT_SESSION`, lazily calling `init_session()` if undefined.
-- `archive_session($session)`: Lifecycle extension hook for future persistence / session resume before resetting context.
+- `archive_session($session)`: Calls `save_session($session)` to persist active session to disk before resetting context.
 - `handle_new_command($out_fh, $session)`: Command handler for `/new` slash command; archives existing session, initializes a fresh session, and prints confirmation.
+- `get_sessions_dir()`: Resolves session storage directory (`~/.code-agent/sessions` or `CLAUDE_SESSIONS_DIR`).
+- `get_max_saved_sessions()`: Returns retention limit for saved sessions (default `100` or `CLAUDE_MAX_SESSIONS`).
+- `is_valid_session_id($id)`: Validates session identifier against `^[A-Za-z0-9_-]+$` preventing path traversal and reserved names (`index`).
+- `atomic_write_file($path, $content, [$mode])`: Writes file atomically using process/random temporary file and rename with mode `0600`.
+- `save_session($session, [$dir])`: Persists session as schema version 1 JSON, updates `index.json`, and prunes sessions exceeding retention limit.
+- `load_session($id, [$dir])`: Loads and decodes session JSON file by ID.
+- `delete_session($id, [$dir])`: Deletes session JSON file and removes entry from `index.json`.
+- `list_sessions([$options, $dir])`: Returns array of session index summaries, optionally filtered by `cwd` and limited by `limit`.
+- `save_sessions_index($index, [$dir])`: Atomically saves `index.json`.
+- `rebuild_sessions_index([$dir])`: Scans session JSON files in directory and rebuilds sorted `index.json`.
+- `load_sessions_index([$dir])`: Reads `index.json`, rebuilding it automatically if missing or corrupt.
+- `resolve_session_id($query, [$dir])`: Resolves session ID by exact match (case-sensitive and case-insensitive), direct file check, or unique prefix match; returns structured result or `($id, $error)`.
+- `generate_and_set_session_title($session, $first_prompt)`: Requests concise title (< 25 chars) from LLM using quiet API call, falling back to sanitized user prompt.
+- `switch_to_session($target_id, $out_fh)`: Switches current session to target session (resolving ID/prefix), saves previous session, and prints resume summary.
+- `delete_session_command($target_id, $out_fh)`: Resolves and deletes saved session, updating index.
+- `handle_session_command($args, $out_fh)`: Command handler for `/session <id>` and `/session delete <id>`.
+- `get_recent_sessions([$opt_cwd, $limit])`: Queries index for recent sessions filtered by `cwd` (or all) up to limit (default 15).
+- `select_session_interactive($sessions, $current_id, $is_all, $in_fh, $out_fh, $cwd_name)`: Interactive terminal menu for session selection with arrow keys and digit jumps.
+- `select_session_nontty($sessions, $current_id, $is_all, $in_fh, $out_fh, $cwd_name)`: Non-TTY numbered prompt fallback for session selection.
+- `handle_sessions_command($args, $in_fh, $out_fh)`: Command handler for `/sessions` and `/sessions all`.
+- `format_session_resume_summary($session, $out_fh)`: Renders session resumption header, timestamps, message count, and last two interaction turns.
+- `parse_cli_args($args)`: Parses command line arguments, extracting `--session <id>` / `--session=<id>`.
+- `init_startup_session($cli_opts, $err_fh)`: Initializes session at startup, resolving and loading session if `--session` passed.
 - `estimate_session_chars($session)`: Calculates total character footprint across all conversation messages in `$session`.
 - `count_user_turns($session)`: Counts total user interaction turns in `$session`.
 - `compact_tool_result_content($content, %opts)`: Truncates large tool result string while preserving head and tail lines with a clear omission note.
@@ -178,7 +201,7 @@ A recursive-descent JSON parser and encoder tailored for standard Perl scalars, 
 ## 2. Module: `build.pl`
 
 ### Overview
-A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 13 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
+A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN dependencies. It concatenates the 15 domain modules from `src/` into the standalone `code-agent.pl` distribution artifact, applies `chmod 0755`, and validates syntax via `perl -c`.
 
 ### Command Line Interface
 - `perl build.pl`: Concatenates `src/*.pl` in manifest order, writes `code-agent.pl`, and verifies syntax.
@@ -193,13 +216,15 @@ A manifest-driven assembly script written in pure Perl 5.8.6 with zero CPAN depe
 4. `src/transport.pl`: Curl invocation (`call_api`) and shell quotation (`quote`).
 5. `src/providers.pl`: Provider-specific header/request builders, response parsers, model discovery.
 6. `src/models_menu.pl`: Interactive curses-like terminal model selector.
-7. `src/session.pl`: Session management, state accessors, slash command handlers.
-8. `src/tools.pl`: Tool definitions (`@TOOLS`), confirmation helpers, Gemini setup helpers, `run_tool` dispatcher.
-9. `src/mcp.pl`: Remote Model Context Protocol (MCP) client, JSON-RPC protocol, tool registration, `/mcp` command.
-10. `src/terminal.pl`: Pure-Perl interactive readline engine with history and ANSI cursor positioning.
-11. `src/markdown.pl`: Pure-Perl Markdown renderer for Mac OS X 10.4 Tiger terminal and standalone preview utility.
-12. `src/ui.pl`: Formatting helpers for tool summaries, tool calls, thinking status, and ANSI-aware `slow_print`.
-13. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
+7. `src/session_store.pl`: Session persistence (schema v1), atomic JSON file writes (`0600`), rebuildable index (`index.json`), retention pruning, and exact/prefix ID resolution.
+8. `src/session.pl`: Session management, state accessors, slash command handlers.
+9. `src/sessions_menu.pl`: Interactive curses-like terminal session switcher (`/sessions`, `/sessions all`), non-TTY fallback, and recent session query helpers.
+10. `src/tools.pl`: Tool definitions (`@TOOLS`), confirmation helpers, Gemini setup helpers, `run_tool` dispatcher.
+11. `src/mcp.pl`: Remote Model Context Protocol (MCP) client, JSON-RPC protocol, tool registration, `/mcp` command.
+12. `src/terminal.pl`: Pure-Perl interactive readline engine with history and ANSI cursor positioning.
+13. `src/markdown.pl`: Pure-Perl Markdown renderer for Mac OS X 10.4 Tiger terminal and standalone preview utility.
+14. `src/ui.pl`: Formatting helpers for tool summaries, session resume summaries, tool calls, thinking status, and ANSI-aware `slow_print`.
+15. `src/main.pl`: Guarded entrypoint under `unless (caller)` with CLI option parsing (`--session`), session auto-saving, REPL loop, and turnaround.
 
 ---
 
