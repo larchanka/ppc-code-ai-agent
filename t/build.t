@@ -40,7 +40,9 @@ is($syntax_code, 0, "build.pl compiles cleanly (perl -c)")
         'transport.pl',
         'providers.pl',
         'models_menu.pl',
+        'session_store.pl',
         'session.pl',
+        'sessions_menu.pl',
         'tools.pl',
         'mcp.pl',
         'terminal.pl',
@@ -120,7 +122,7 @@ is($syntax_code, 0, "build.pl compiles cleanly (perl -c)")
 
     my @manifest = (
         'header.pl', 'prompts.pl', 'json.pl', 'transport.pl', 'providers.pl', 'models_menu.pl',
-        'session.pl', 'tools.pl', 'mcp.pl', 'terminal.pl', 'markdown.pl', 'ui.pl', 'main.pl',
+        'session_store.pl', 'session.pl', 'sessions_menu.pl', 'tools.pl', 'mcp.pl', 'terminal.pl', 'markdown.pl', 'ui.pl', 'main.pl',
     );
 
     for my $fname (@manifest) {

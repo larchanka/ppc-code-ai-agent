@@ -202,12 +202,14 @@ cat > "$BIN_DIR/code" << WRAPEOF
 if [ -f "$HOME/.code-agent/env" ]; then
   source "$HOME/.code-agent/env"
 fi
-export CLAUDE_CURL=$CURL_BIN
-export CLAUDE_CACERT=$CACERT
-exec perl $AGENT_SCRIPT
+export CLAUDE_CURL="$CURL_BIN"
+export CLAUDE_CACERT="$CACERT"
+exec perl "$AGENT_SCRIPT" "\$@"
 WRAPEOF
 chmod +x "$BIN_DIR/code"
 echo "Created $BIN_DIR/code"
+ln -sf "$BIN_DIR/code" "$BIN_DIR/code-agent"
+echo "Created alias $BIN_DIR/code-agent -> $BIN_DIR/code"
 
 if ! grep -qF 'export PATH=$HOME/bin:$PATH' "$HOME/.bash_profile" 2>/dev/null; then
   echo "export PATH=\$HOME/bin:\$PATH" >> "$HOME/.bash_profile"

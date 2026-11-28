@@ -13,9 +13,10 @@ This document inventories internal module relationships, system toolchains, bund
   - [`modern-install.command`](../modern-install.command): Provisions `code-agent.pl` and `cacert.pem` into `$HOME/.code-agent/build` using host curl and perl on modern macOS and Linux.
 - **Generated Wrapper**:
   - `$HOME/bin/code` and `$HOME/bin/code-agent`: Sourced shell wrappers pointing to `$HOME/.code-agent/env`, curl, and `$HOME/.code-agent/build/code-agent.pl`.
-- **Environment & MCP Configuration**:
+- **Environment, Session & MCP Configuration**:
   - `$HOME/.code-agent/env`: Persistent credentials and preferences file (`0600` permissions). Sourced by wrapper scripts and parsed by `src/header.pl`. Legacy files are migrated on installation.
   - `$HOME/.code-agent/mcp.json` / `mcp_servers.json`: Persistent MCP server configuration file discovered by `src/mcp.pl` (or configured via `CLAUDE_MCP_CONFIG` / `CLAUDE_MCP_SERVERS`).
+  - `$HOME/.code-agent/sessions/`: Persistent session storage directory containing `<id>.json` files (`0600` permissions, schema version 1) and cached `index.json`.
 
 ---
 

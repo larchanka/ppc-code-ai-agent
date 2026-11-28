@@ -20,7 +20,8 @@ our $CURRENT_SESSION;
 # 1. generate_session_id format and monotonicity
 my $id1 = generate_session_id();
 ok(defined $id1, "generate_session_id() returns defined ID");
-like($id1, qr/^session-\d{8}-\d{6}-\d{3,}$/, "session ID matches expected format");
+like($id1, qr/^\d{4}-[0-9a-f]{4}$/, "session ID matches expected format (MMDD-XXXX)");
+is(length($id1), 9, "session ID is 9 characters");
 
 my $id2 = generate_session_id();
 ok(defined $id2, "second generate_session_id() returns defined ID");
@@ -29,8 +30,12 @@ isnt($id1, $id2, "consecutive session IDs are unique");
 # 2. init_session creates structured session
 my $s1 = init_session();
 ok(defined $s1 && ref($s1) eq 'HASH', "init_session() returns hashref");
-ok(defined $s1->{id} && $s1->{id} =~ /^session-/, "session has valid id");
+ok(defined $s1->{id} && $s1->{id} =~ /^\d{4}-[0-9a-f]{4}$/, "session has valid id");
 ok(defined $s1->{created_at} && $s1->{created_at} > 0, "session has valid created_at");
+ok(defined $s1->{updated_at} && $s1->{updated_at} > 0, "session has valid updated_at");
+is($s1->{title}, '', "session title initialized to empty string");
+is($s1->{title_attempted}, 0, "session title_attempted initialized to 0");
+ok(exists $s1->{cwd}, "session has cwd field");
 is(ref($s1->{messages}), 'ARRAY', "session has messages arrayref");
 is(scalar(@{$s1->{messages}}), 0, "session messages array starts empty");
 
@@ -230,6 +235,7 @@ RECORDER
 
     my $cmd = qq{printf "First unique message\\n/new\\nSecond unique message\\nexit\\n" | } .
               qq{HOME="/nonexistent" ANTHROPIC_API_KEY="test-ant-key" CLAUDE_PROVIDER="anthropic" } .
+              qq{CLAUDE_SESSION_AUTO_TITLE="0" } .
               qq{CLAUDE_CURL="$recorder_script" CLAUDE_CACERT="$ENV{CLAUDE_CACERT}" } .
               qq{RECORDER_LOG="$log_file" } .
               qq{$perl $script 2>&1};

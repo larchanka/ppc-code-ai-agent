@@ -15,8 +15,9 @@ use utf8;
 use Encode qw(decode encode FB_DEFAULT);
 use POSIX qw(WNOHANG);
 use File::Temp qw(tempfile tempdir);
-use File::Basename qw(dirname);
+use File::Basename qw(dirname basename);
 use File::Path qw(mkpath);
+use Cwd qw(cwd);
 
 # Explicitly handle screen output as UTF-8.
 binmode STDOUT, ':encoding(UTF-8)';

@@ -104,21 +104,40 @@ sub record_session_subagent_call {
 
 sub generate_session_id {
     my ($sec, $min, $hour, $mday, $mon, $year) = localtime();
+    my $prefix = sprintf("%02d%02d", $mon + 1, $mday);
+    my $dir = eval { get_sessions_dir() };
+
+    for (my $attempt = 0; $attempt < 100; $attempt++) {
+        my $suffix = sprintf("%04x", int(rand(65536)));
+        my $id = "$prefix-$suffix";
+        if (defined $dir && -d $dir && -f File::Spec->catfile($dir, "$id.json")) {
+            next;
+        }
+        $SESSION_COUNTER++;
+        return $id;
+    }
+
     $SESSION_COUNTER++;
-    return sprintf("session-%04d%02d%02d-%02d%02d%02d-%03d",
-        $year + 1900, $mon + 1, $mday, $hour, $min, $sec, $SESSION_COUNTER);
+    return sprintf("%s-%04x", $prefix, ($SESSION_COUNTER & 0xffff));
 }
 
 sub init_session {
     my ($id) = @_;
     $id = generate_session_id() unless defined $id && length $id;
+    my $now = time();
+    my $cwd = eval { cwd() };
+    $cwd = '' unless defined $cwd;
     $CURRENT_SESSION = {
-        id         => $id,
-        created_at => time(),
-        provider   => $PROVIDER,
-        model      => $MODEL,
-        messages   => [],
-        stats      => _default_session_stats(),
+        id              => $id,
+        title           => '',
+        title_attempted => 0,
+        cwd             => $cwd,
+        created_at      => $now,
+        updated_at      => $now,
+        provider        => $PROVIDER,
+        model           => $MODEL,
+        messages        => [],
+        stats           => _default_session_stats(),
     };
     return $CURRENT_SESSION;
 }
@@ -132,8 +151,7 @@ sub archive_session {
     my ($session) = @_;
     $session = $CURRENT_SESSION unless defined $session;
     return unless defined $session;
-    # Extension hook: in future releases, serialize $session to disk
-    # (e.g. ~/.code-agent-sessions/$session->{id}.json) for resume/continue.
+    save_session($session);
     return $session;
 }
 
@@ -153,19 +171,21 @@ sub show_help {
     my ($out_fh) = @_;
     $out_fh ||= \*STDOUT;
     print $out_fh "\nAvailable commands:\n";
-    print $out_fh "  /new     - Start a new conversation (clears chat history)\n";
-    print $out_fh "  /models  - View and switch available AI models\n";
-    print $out_fh "  /ctx     - View or set max output tokens per response (e.g. /ctx 64k)\n";
-    print $out_fh "  /compact - Compact conversation history to free context and memory\n";
-    print $out_fh "  /stats   - View current session statistics (duration, tokens, turns, tools)\n";
-    print $out_fh "  /claude  - Switch to Anthropic Claude\n";
-    print $out_fh "  /gemini  - Switch to Google Gemini\n";
-    print $out_fh "  /openai  - Switch to OpenAI-compatible endpoint (alias: /local)\n";
-    print $out_fh "  /auto    - Enable auto mode (run tools without confirmation)\n";
-    print $out_fh "  /manual  - Enable manual mode (require tool confirmation)\n";
-    print $out_fh "  /mcp     - Manage remote Model Context Protocol (MCP) servers\n";
-    print $out_fh "  /help    - Show available commands\n";
-    print $out_fh "  exit     - Exit the agent (or Ctrl-D)\n";
+    print $out_fh "  /new      - Start a new conversation (clears chat history)\n";
+    print $out_fh "  /session  - Switch, delete, or manage sessions (/session <id>, /session delete <id>)\n";
+    print $out_fh "  /sessions - Browse and resume recent sessions (/sessions, /sessions all)\n";
+    print $out_fh "  /models   - View and switch available AI models\n";
+    print $out_fh "  /ctx      - View or set max output tokens per response (e.g. /ctx 64k)\n";
+    print $out_fh "  /compact  - Compact conversation history to free context and memory\n";
+    print $out_fh "  /stats    - View current session statistics (duration, tokens, turns, tools)\n";
+    print $out_fh "  /claude   - Switch to Anthropic Claude\n";
+    print $out_fh "  /gemini   - Switch to Google Gemini\n";
+    print $out_fh "  /openai   - Switch to OpenAI-compatible endpoint (alias: /local)\n";
+    print $out_fh "  /auto     - Enable auto mode (run tools without confirmation)\n";
+    print $out_fh "  /manual   - Enable manual mode (require tool confirmation)\n";
+    print $out_fh "  /mcp      - Manage remote Model Context Protocol (MCP) servers\n";
+    print $out_fh "  /help     - Show available commands\n";
+    print $out_fh "  exit      - Exit the agent (or Ctrl-D)\n";
 }
 
 sub handle_ctx_command {
@@ -453,6 +473,7 @@ sub handle_compact_command {
 
     my $stats = compact_session_history($session, %opts);
     if ($stats->{compacted_count} > 0) {
+        save_session($session);
         print $out_fh sprintf("Compacted session history: %d tool result(s) truncated, saved %d bytes.\n",
             $stats->{compacted_count}, $stats->{bytes_saved});
     }
@@ -477,4 +498,239 @@ sub handle_stats_command {
     return 1;
 }
 
+# ------------------------------------------------------------------
+# Auto-Title Generation via LLM with Fallback
+# ------------------------------------------------------------------
+
+sub _sanitize_session_title {
+    my ($raw) = @_;
+    return '' unless defined $raw;
+    my $title = $raw;
+    $title =~ s/[^A-Za-z0-9 ]//g;
+    $title =~ s/\s+/ /g;
+    $title =~ s/^\s+|\s+$//g;
+    if (length($title) > 25) {
+        $title = substr($title, 0, 25);
+        $title =~ s/\s+$//;
+    }
+    return $title;
+}
+
+sub sanitize_session_title {
+    return _sanitize_session_title(@_);
+}
+
+sub _generate_fallback_title {
+    my ($first_prompt, $session_or_id) = @_;
+    my $session_id = ref($session_or_id) eq 'HASH' ? $session_or_id->{id} : $session_or_id;
+    my $sanitized = _sanitize_session_title($first_prompt);
+    if (defined $sanitized && length($sanitized)) {
+        return $sanitized;
+    }
+    $session_id = '' unless defined $session_id;
+    return "Session $session_id";
+}
+
+sub _extract_first_user_prompt {
+    my ($session) = @_;
+    return '' unless defined $session && ref($session->{messages}) eq 'ARRAY';
+    for my $msg (@{ $session->{messages} }) {
+        next unless ref($msg) eq 'HASH' && defined $msg->{role} && $msg->{role} eq 'user';
+        if (!ref($msg->{content})) {
+            return $msg->{content} if defined $msg->{content} && $msg->{content} ne '';
+        }
+        elsif (ref($msg->{content}) eq 'ARRAY') {
+            for my $block (@{ $msg->{content} }) {
+                if (ref($block) eq 'HASH' && defined $block->{type} && $block->{type} eq 'text') {
+                    return $block->{text} if defined $block->{text} && $block->{text} ne '';
+                }
+            }
+        }
+    }
+    return '';
+}
+
+sub _has_assistant_message {
+    my ($session) = @_;
+    return 0 unless defined $session && ref($session->{messages}) eq 'ARRAY';
+    for my $msg (@{ $session->{messages} }) {
+        return 1 if ref($msg) eq 'HASH' && defined $msg->{role} && $msg->{role} eq 'assistant';
+    }
+    return 0;
+}
+
+sub generate_and_set_session_title {
+    my ($session, $first_prompt) = @_;
+    $session = $CURRENT_SESSION unless defined $session;
+    return undef unless defined $session && ref($session) eq 'HASH';
+
+    # Return early if title already set or title generation already attempted
+    if ((defined $session->{title} && length($session->{title})) || $session->{title_attempted}) {
+        return $session->{title};
+    }
+    $session->{title_attempted} = 1;
+
+    # Extract first prompt from session messages if not provided
+    if (!defined $first_prompt || $first_prompt eq '') {
+        $first_prompt = _extract_first_user_prompt($session);
+    }
+
+    # Check CLAUDE_SESSION_AUTO_TITLE environment variable
+    my $auto_title_disabled = 0;
+    if (defined $ENV{CLAUDE_SESSION_AUTO_TITLE}) {
+        if ($ENV{CLAUDE_SESSION_AUTO_TITLE} eq '0' || $ENV{CLAUDE_SESSION_AUTO_TITLE} =~ /^(?:false|no|off)$/i) {
+            $auto_title_disabled = 1;
+        }
+    }
+
+    if ($auto_title_disabled || $first_prompt =~ /^\s*$/) {
+        $session->{title} = _generate_fallback_title($first_prompt, $session->{id});
+        save_session($session);
+        return $session->{title};
+    }
+
+    # Truncate prompt sample for title request to prevent huge context
+    my $prompt_sample = length($first_prompt) > 500 ? substr($first_prompt, 0, 500) . '...' : $first_prompt;
+    my $title_prompt = "Generate a short English title (max 25 characters, ASCII letters, digits, spaces only, no punctuation, no quotes) that summarizes this user request:\n\n$prompt_sample\n\nTitle:";
+
+    my $raw_title = '';
+    eval {
+        my $body = build_request(
+            [{ role => 'user', content => $title_prompt }],
+            [],
+            "You are a helpful assistant that generates extremely concise session titles.",
+            32
+        );
+        my $resp = call_api(
+            $API_URL,
+            build_headers(),
+            MiniJSON::encode($body),
+            'POST',
+            { silent => 1, no_retry => 1 }
+        );
+        if ($resp) {
+            my @blocks = parse_response($resp);
+            for my $block (@blocks) {
+                if (ref($block) eq 'HASH' && defined $block->{type} && $block->{type} eq 'text') {
+                    $raw_title .= $block->{text} if defined $block->{text};
+                }
+            }
+        }
+    };
+
+    my $sanitized = _sanitize_session_title($raw_title);
+    if (defined $sanitized && length($sanitized)) {
+        $session->{title} = $sanitized;
+    }
+    else {
+        $session->{title} = _generate_fallback_title($first_prompt, $session->{id});
+    }
+
+    save_session($session);
+    return $session->{title};
+}
+
+sub generate_session_title {
+    return generate_and_set_session_title(@_);
+}
+
+sub switch_to_session {
+    my ($target_id, $out_fh) = @_;
+    $out_fh ||= \*STDOUT;
+
+    my $res = resolve_session_id($target_id);
+    if (!$res->{ok}) {
+        print $out_fh "$res->{error}\n";
+        return undef;
+    }
+
+    my $resolved_id = $res->{id};
+    if (defined $CURRENT_SESSION && ref($CURRENT_SESSION) eq 'HASH' &&
+        defined $CURRENT_SESSION->{id} && $CURRENT_SESSION->{id} eq $resolved_id) {
+        print $out_fh "Session '$resolved_id' is already the current session.\n";
+        return $CURRENT_SESSION;
+    }
+
+    # Auto-save current session before switching if non-empty
+    if (defined $CURRENT_SESSION && ref($CURRENT_SESSION) eq 'HASH') {
+        my $msgs = $CURRENT_SESSION->{messages};
+        if (ref($msgs) eq 'ARRAY' && scalar(@$msgs) > 0) {
+            save_session($CURRENT_SESSION);
+        }
+    }
+
+    my $loaded = load_session($resolved_id);
+    if (!defined $loaded || ref($loaded) ne 'HASH') {
+        print $out_fh "Failed to load session '$resolved_id'.\n";
+        return undef;
+    }
+
+    # Ensure stats and structure are initialized
+    get_session_stats($loaded);
+
+    # Preserve current active provider & model
+    $CURRENT_SESSION = $loaded;
+
+    format_session_resume_summary($CURRENT_SESSION, $out_fh);
+    return $CURRENT_SESSION;
+}
+
+sub delete_session_command {
+    my ($target_id, $out_fh) = @_;
+    $out_fh ||= \*STDOUT;
+
+    my $res = resolve_session_id($target_id);
+    if (!$res->{ok}) {
+        print $out_fh "$res->{error}\n";
+        return 0;
+    }
+
+    my $resolved_id = $res->{id};
+    my $is_current = (defined $CURRENT_SESSION && ref($CURRENT_SESSION) eq 'HASH' &&
+                      defined $CURRENT_SESSION->{id} && $CURRENT_SESSION->{id} eq $resolved_id) ? 1 : 0;
+
+    my $ok = delete_session($resolved_id);
+    if (!$ok) {
+        print $out_fh "Failed to delete session '$resolved_id'.\n";
+        return 0;
+    }
+
+    print $out_fh "Deleted session '$resolved_id'.\n";
+
+    if ($is_current) {
+        my $new_session = init_session();
+        print $out_fh "Started a fresh session ($new_session->{id}).\n";
+    }
+
+    return 1;
+}
+
+sub handle_session_command {
+    my ($args, $out_fh) = @_;
+    $out_fh ||= \*STDOUT;
+
+    if (!defined $args || $args =~ /^\s*$/) {
+        print $out_fh "Usage:\n";
+        print $out_fh "  /session <id>        - Switch to a saved session (exact ID or prefix)\n";
+        print $out_fh "  /session delete <id> - Delete a saved session\n";
+        print $out_fh "  /sessions            - List saved sessions\n";
+        return;
+    }
+
+    $args =~ s/^\s+|\s+$//g;
+
+    if ($args =~ /^delete(?:\s+(.*))?$/i) {
+        my $del_id = $1;
+        if (!defined $del_id || $del_id =~ /^\s*$/) {
+            print $out_fh "Usage: /session delete <id>\n";
+            return;
+        }
+        $del_id =~ s/^\s+|\s+$//g;
+        return delete_session_command($del_id, $out_fh);
+    }
+
+    return switch_to_session($args, $out_fh);
+}
+
+1;
 

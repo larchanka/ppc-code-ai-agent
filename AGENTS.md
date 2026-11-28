@@ -56,6 +56,10 @@ perl code-agent.pl
 code
 # or
 code-agent
+
+# Resume an existing session via CLI flag (exact ID or unique prefix)
+perl code-agent.pl --session 1128-a1b2
+code --session 1128-a1b2
 ```
 
 ### Environment Configuration (`~/.code-agent/env`)
@@ -63,9 +67,23 @@ Credentials and runtime settings are placed in `~/.code-agent/env` (`chmod 0600`
 - `load_env_file()` in `src/header.pl` automatically parses `export KEY=VALUE` or `KEY=VALUE`.
 - Precedence: Active environment variables in `%ENV` override file entries.
 - Migration: Install scripts (`Install.command`, `modern-install.command`) migrate legacy `~/.code-agent-env` and `~/.claude-agent-env` into `~/.code-agent/env`.
-- Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_AUTO_COMPACT`, `CLAUDE_COMPACT_THRESHOLD_CHARS`, `CLAUDE_COMPACT_THRESHOLD_TURNS`, `CLAUDE_CURL`, `CLAUDE_CACERT`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`.
+- Key variables: `CLAUDE_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_AUTO_MODE`, `CLAUDE_AUTO_COMPACT`, `CLAUDE_COMPACT_THRESHOLD_CHARS`, `CLAUDE_COMPACT_THRESHOLD_TURNS`, `CLAUDE_SESSIONS_DIR`, `CLAUDE_MAX_SESSIONS`, `CLAUDE_SESSION_AUTO_TITLE`, `CLAUDE_CURL`, `CLAUDE_CACERT`, `CLAUDE_MCP_CONFIG`, `CLAUDE_MCP_SERVERS`.
 - Interactive `/openai` (and `/local`) switching automatically normalizes base URLs (via `normalize_openai_endpoint()`) and can persist them to `~/.code-agent/env` via `save_env_vars()`.
 - Remote MCP server configuration is discovered from `~/.code-agent/mcp.json`, `./mcp_servers.json`, or environment variables.
+
+### Session Persistence & Lifecycle
+- Sessions are identified by short human-friendly IDs (`MMDD-XXXX`, e.g. `1128-a1b2`) and persisted as schema-v1 JSON under `~/.code-agent/sessions/<id>.json` (`0600` permissions) with metadata cached in `~/.code-agent/sessions/index.json`.
+- Automatic saving triggers after each assistant turn and upon exit. Automatic titling generates concise, descriptive titles (< 25 chars) after the first complete exchange.
+- Slash commands:
+  - `/sessions`: Interactive menu to browse and resume recent sessions in current directory.
+  - `/sessions all`: Browse and resume recent sessions across all directories.
+  - `/session <id>`: Switch directly to session by exact ID or unique case-insensitive prefix.
+  - `/session delete <id>`: Delete saved session and purge from index.
+- CLI startup flag: `--session <id>` (or `--session=<id>`) resumes target session immediately at startup.
+- Configuration:
+  - `CLAUDE_SESSIONS_DIR`: Custom directory for session storage (default: `~/.code-agent/sessions`).
+  - `CLAUDE_MAX_SESSIONS`: Retention limit for saved sessions (default: `100`; oldest pruned by `updated_at`).
+  - `CLAUDE_SESSION_AUTO_TITLE`: Enable/disable background LLM auto-titling (default: `1`).
 
 ### Verification & Testing
 ```bash
@@ -100,7 +118,7 @@ For in-depth architectural details, refer to the documentation in the [`context/
 | :--- | :--- | :--- |
 | [`code-agent.pl`](./code-agent.pl) | Standalone interactive CLI agent loop, JSON engine, API adapters, and tool executors | Entrypoint / Distribution Artifact |
 | [`build.pl`](./build.pl) | Pure Perl 5.8.6 manifest-driven build script that compiles `src/*.pl` into `code-agent.pl` | Build Tool |
-| [`src/`](./src/) | Modular source files (13 functional modules, see breakdown below) | Source Tree |
+| [`src/`](./src/) | Modular source files (15 functional modules, see breakdown below) | Source Tree |
 | [`scripts/check_minimum_version.pl`](./scripts/check_minimum_version.pl) | Perl 5.8.6 static syntax checker and compatibility verification tool | Verification Tool |
 | [`Install.command`](./Install.command) | Interactive setup script for PowerPC Tiger (Finder and terminal, toolchain deployment, API key setup) | Installer Entrypoint |
 | [`modern-install.command`](./modern-install.command) | Interactive setup script for modern macOS (Intel/Apple Silicon) and Linux | Installer Entrypoint |
@@ -109,20 +127,22 @@ For in-depth architectural details, refer to the documentation in the [`context/
 | [`README.txt`](./README.txt) | User installation and operational manual | Documentation |
 
 ### Modular Source Layout (`src/*.pl`) & Build System
-`code-agent.pl` is generated from 13 modular files in `src/` concatenated in an explicit manifest order:
+`code-agent.pl` is generated from 15 modular files in `src/` concatenated in an explicit manifest order:
 1. `src/header.pl`: Pragmas, config, colors, cursor, env helpers, globals, `configure_provider`.
 2. `src/prompts.pl`: System prompts (`$SYSTEM_PROMPT`), sub-agent instructions (`$SUBAGENT_PLAN_PROMPT`, `$SUBAGENT_BUILD_PROMPT`), AGENTS.md discovery and prompt composition helpers.
 3. `src/json.pl`: Pure-Perl JSON parser & encoder (`MiniJSON`).
 4. `src/transport.pl`: Curl invocation (`call_api`) and shell quotation (`quote`).
 5. `src/providers.pl`: Provider adapters for Anthropic, Gemini, OpenAI, model discovery.
 6. `src/models_menu.pl`: Interactive curses-like terminal model selection menu.
-7. `src/session.pl`: Session management, state accessors, slash command handlers.
-8. `src/tools.pl`: Tool definitions (`@TOOLS`, including `invoke_subagent`), sub-agent runner (`run_subagent`), confirmation helpers, Gemini setup helpers, `run_tool`.
-9. `src/mcp.pl`: Remote Model Context Protocol (MCP) client, JSON-RPC 2.0 protocol engine, dynamic tool discovery and registration, curl transport, and `/mcp` command handler.
-10. `src/terminal.pl`: Pure-Perl interactive readline implementation with history and ANSI cursor positioning.
-11. `src/markdown.pl`: Pure-Perl 5.8.6 Markdown renderer tailored for Mac OS X 10.4 Tiger `Terminal.app` (`render_markdown`, `format_inline_markdown`, ASCII tables, and standalone CLI preview mode).
-12. `src/ui.pl`: Formatting helpers for tool calls, sub-agent tree visuals, summaries, thinking status, and ANSI-aware `slow_print`.
-13. `src/main.pl`: Guarded entrypoint under `unless (caller)` with REPL loop and turnaround.
+7. `src/session_store.pl`: Session persistence (schema v1), atomic JSON file writes (`0600`), rebuildable index (`index.json`), retention pruning, and exact/prefix ID resolution.
+8. `src/session.pl`: Session lifecycle, state accessors, slash command handlers (`/new`, `/compact`, `/stats`, `/ctx`, `/session`, `/sessions`, LLM auto-titling).
+9. `src/sessions_menu.pl`: Interactive curses-like terminal session switcher (`/sessions`, `/sessions all`), non-TTY fallback, and recent session query helpers.
+10. `src/tools.pl`: Tool definitions (`@TOOLS`, including `invoke_subagent`), sub-agent runner (`run_subagent`), confirmation helpers, Gemini setup helpers, `run_tool`.
+11. `src/mcp.pl`: Remote Model Context Protocol (MCP) client, JSON-RPC 2.0 protocol engine, dynamic tool discovery and registration, curl transport, and `/mcp` command handler.
+12. `src/terminal.pl`: Pure-Perl interactive readline implementation with history and ANSI cursor positioning.
+13. `src/markdown.pl`: Pure-Perl 5.8.6 Markdown renderer tailored for Mac OS X 10.4 Tiger `Terminal.app` (`render_markdown`, `format_inline_markdown`, ASCII tables, and standalone CLI preview mode).
+14. `src/ui.pl`: Formatting helpers for tool calls, session resume summaries, sub-agent tree visuals, summaries, thinking status, and ANSI-aware `slow_print`.
+15. `src/main.pl`: Guarded entrypoint under `unless (caller)` with CLI argument parsing (`--session`), session auto-saving, REPL loop, and turnaround.
 
 #### Build Tool Usage (`build.pl`)
 - `perl build.pl`: Concatenates `src/*.pl`, applies `chmod 0755`, runs `perl -c code-agent.pl`.

@@ -325,6 +325,9 @@ sub _format_stats_header {
 
     my $out = "\n${c_head}=== Session Statistics ===${c_reset}\n";
     $out .= "  Session ID: $id\n";
+    if (defined $session->{title} && length($session->{title})) {
+        $out .= "  Title:      $session->{title}\n";
+    }
     $out .= "  Provider:   $prov\n";
     $out .= "  Model:      $model\n";
     $out .= "  Started:    $started_str\n";
@@ -431,6 +434,124 @@ sub format_session_stats {
          . _format_stats_tools($stats)
          . _format_stats_compaction($stats);
 }
+
+sub _extract_message_text_preview {
+    my ($msg, $max_len) = @_;
+    $max_len = 80 unless defined $max_len;
+    return '' unless defined $msg && ref($msg) eq 'HASH';
+
+    my $content = $msg->{content};
+    my $raw_text = '';
+    if (!ref($content)) {
+        $raw_text = defined $content ? $content : '';
+    }
+    elsif (ref($content) eq 'ARRAY') {
+        for my $block (@$content) {
+            next unless ref($block) eq 'HASH';
+            if (defined $block->{type} && $block->{type} eq 'text') {
+                $raw_text .= ($block->{text} || '');
+            }
+        }
+    }
+
+    # Clean whitespace and newlines for 1-2 line preview
+    $raw_text =~ s/\r?\n/ /g;
+    $raw_text =~ s/\s+/ /g;
+    $raw_text =~ s/^\s+|\s+$//g;
+
+    return truncate_text($raw_text, $max_len);
+}
+
+sub _find_recent_session_exchanges {
+    my ($messages, $count) = @_;
+    $count = 2 unless defined $count && $count > 0;
+    return () unless defined $messages && ref($messages) eq 'ARRAY';
+
+    my @exchanges;
+
+    for my $m (@$messages) {
+        next unless ref($m) eq 'HASH';
+        my $role = $m->{role} || '';
+        if ($role eq 'user') {
+            # Skip tool results
+            my $is_tool_res = 0;
+            if (ref($m->{content}) eq 'ARRAY') {
+                for my $b (@{ $m->{content} }) {
+                    if (ref($b) eq 'HASH' && defined $b->{type} && $b->{type} eq 'tool_result') {
+                        $is_tool_res = 1;
+                        last;
+                    }
+                }
+            }
+            next if $is_tool_res;
+            my $user_text = _extract_message_text_preview($m, 70);
+            push @exchanges, {
+                user      => $user_text,
+                assistant => '',
+            };
+        }
+        elsif ($role eq 'assistant' && @exchanges) {
+            my $asst_text = _extract_message_text_preview($m, 70);
+            if (length($asst_text)) {
+                $exchanges[-1]->{assistant} = $asst_text;
+            }
+        }
+    }
+
+    if (scalar(@exchanges) > $count) {
+        @exchanges = @exchanges[ -$count .. -1 ];
+    }
+
+    return @exchanges;
+}
+
+sub format_session_resume_summary {
+    my ($session, $out_fh) = @_;
+    $out_fh ||= \*STDOUT;
+    return unless defined $session && ref($session) eq 'HASH';
+
+    my $c_head  = defined $COLOR_HEADER ? $COLOR_HEADER : '';
+    my $c_bold  = defined $STYLE_BOLD   ? $STYLE_BOLD   : '';
+    my $c_dim   = defined $COLOR_DIM    ? $COLOR_DIM    : '';
+    my $c_reset = defined $COLOR_RESET  ? $COLOR_RESET  : '';
+
+    my $id = $session->{id} || 'unknown';
+    my $title = $session->{title};
+    $title = '(untitled)' unless defined $title && length($title);
+
+    my $updated = defined $session->{updated_at} ? int($session->{updated_at}) : time();
+    my ($sec, $min, $hour, $mday, $mon, $year) = localtime($updated);
+    $year += 1900;
+    $mon += 1;
+    my $updated_str = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year, $mon, $mday, $hour, $min, $sec);
+
+    my $messages = ref($session->{messages}) eq 'ARRAY' ? $session->{messages} : [];
+    my $msg_count = scalar(@$messages);
+
+    my $out = "\n${c_head}=== Resumed Session: $id ===${c_reset}\n";
+    $out .= "  ${c_bold}Title:${c_reset}    $title\n";
+    $out .= "  ${c_bold}Updated:${c_reset}  $updated_str\n";
+    $out .= "  ${c_bold}Messages:${c_reset} $msg_count\n";
+    $out .= "  ${c_dim}(Active model/provider stays as current)${c_reset}\n";
+
+    my @recent = _find_recent_session_exchanges($messages, 2);
+    if (@recent) {
+        $out .= "\n${c_bold}Recent context:${c_reset}\n";
+        for my $ex (@recent) {
+            if (length($ex->{user})) {
+                $out .= "  ${c_bold}User:${c_reset} $ex->{user}\n";
+            }
+            if (length($ex->{assistant})) {
+                $out .= "  ${c_dim}Assistant:${c_reset} $ex->{assistant}\n";
+            }
+        }
+    }
+    $out .= "\n";
+
+    print $out_fh $out;
+    return $out;
+}
+
 
 
 
